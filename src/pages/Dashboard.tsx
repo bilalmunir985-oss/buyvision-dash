@@ -204,7 +204,6 @@ const Dashboard = () => {
               animateRows={true}
               rowSelection="single"
               onGridReady={onGridReady}
-              className="ag-theme-alpine"
             />
           </div>
         </CardContent>
