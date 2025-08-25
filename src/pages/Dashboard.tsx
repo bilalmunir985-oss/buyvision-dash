@@ -193,7 +193,7 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <div className="ag-theme-alpine" style={{ height: '500px', width: '100%' }}>
-            <AgGridReact<DashboardRow>
+            <AgGridReact
               rowData={metrics}
               columnDefs={columnDefs}
               defaultColDef={{
