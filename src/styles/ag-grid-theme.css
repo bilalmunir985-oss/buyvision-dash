@@ -1,0 +1,81 @@
+/* Custom ag-Grid theme that matches our design system */
+
+.ag-theme-alpine {
+  --ag-background-color: hsl(var(--card));
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-border-color: hsl(var(--border));
+  --ag-header-background-color: hsl(var(--table-header));
+  --ag-header-foreground-color: hsl(var(--foreground));
+  --ag-odd-row-background-color: hsl(var(--background));
+  --ag-row-hover-color: hsl(var(--table-row-hover));
+  --ag-selected-row-background-color: hsl(var(--accent) / 0.1);
+  --ag-range-selection-background-color: hsl(var(--primary) / 0.1);
+  --ag-font-family: inherit;
+  --ag-font-size: 14px;
+  --ag-cell-horizontal-padding: 12px;
+  --ag-header-height: 40px;
+  --ag-row-height: 48px;
+}
+
+.ag-theme-alpine .ag-header {
+  border-bottom: 1px solid hsl(var(--border));
+  font-weight: 600;
+}
+
+.ag-theme-alpine .ag-header-cell {
+  border-right: 1px solid hsl(var(--border) / 0.5);
+}
+
+.ag-theme-alpine .ag-cell {
+  border-right: 1px solid hsl(var(--border) / 0.3);
+  display: flex;
+  align-items: center;
+}
+
+.ag-theme-alpine .ag-row {
+  border-bottom: 1px solid hsl(var(--border) / 0.3);
+}
+
+.ag-theme-alpine .ag-row:hover {
+  background-color: hsl(var(--table-row-hover));
+}
+
+.ag-theme-alpine .ag-cell-focus {
+  border: 2px solid hsl(var(--ring));
+}
+
+/* Filter and menu styling */
+.ag-theme-alpine .ag-filter {
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.ag-theme-alpine .ag-menu {
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: var(--shadow-dropdown);
+}
+
+/* Sort indicators */
+.ag-theme-alpine .ag-header-cell-sortable .ag-header-cell-label:hover {
+  background-color: hsl(var(--accent) / 0.1);
+}
+
+.ag-theme-alpine .ag-sort-ascending-icon,
+.ag-theme-alpine .ag-sort-descending-icon {
+  color: hsl(var(--primary));
+}
+
+/* Loading overlay */
+.ag-theme-alpine .ag-overlay-loading-wrapper {
+  background-color: hsl(var(--background) / 0.8);
+}
+
+.ag-theme-alpine .ag-overlay-loading-center {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
