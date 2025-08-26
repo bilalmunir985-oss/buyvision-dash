@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Search, Check } from 'lucide-react';
+import { Loader2, Search, Check, ExternalLink } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -24,6 +24,7 @@ export default function TCGMapping() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -78,6 +79,9 @@ export default function TCGMapping() {
   const handleVerifyMatch = async (tcgResult: TCGSearchResult) => {
     if (!selectedProduct) return;
 
+    const currentProduct = unverifiedProducts.find(p => p.id === selectedProduct);
+    if (!currentProduct) return;
+
     try {
       const response = await supabase.functions.invoke('admin-set-tcg-id', {
         body: { 
@@ -89,6 +93,10 @@ export default function TCGMapping() {
       if (response.error) throw response.error;
 
       setUnverifiedProducts(prev => prev.filter(p => p.id !== selectedProduct));
+      setVerifiedMapping({
+        productName: currentProduct.name,
+        tcgId: tcgResult.productId
+      });
       setSelectedProduct(null);
       setSearchResults([]);
 
@@ -187,6 +195,31 @@ export default function TCGMapping() {
           </CardContent>
         </Card>
       </div>
+
+      {verifiedMapping && (
+        <Card className="bg-green-50 border-green-200">
+          <CardHeader>
+            <CardTitle className="text-green-800">Recently Verified</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-green-900">{verifiedMapping.productName}</h3>
+                <p className="text-sm text-green-700">TCG ID: {verifiedMapping.tcgId}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`https://www.tcgplayer.com/product/${verifiedMapping.tcgId}`, '_blank')}
+                className="border-green-300 text-green-800 hover:bg-green-100"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View on TCGplayer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
