@@ -152,7 +152,7 @@ const ProductCatalog = () => {
       flex: 3,
       minWidth: 200,
       sortable: true,
-      filter: true,
+      filter: false,
       cellRenderer: (params: any) => (
         <div className="flex items-center space-x-2 py-2 cursor-pointer hover:bg-muted/50 rounded px-2 -mx-2">
           <Package className="h-4 w-4 text-primary flex-shrink-0" />
@@ -167,35 +167,11 @@ const ProductCatalog = () => {
       )
     },
     { 
-      field: "set_code", 
-      headerName: "Set Code", 
-      width: 100,
-      sortable: true,
-      filter: true,
-      hide: true, // Hidden since it's shown in the name column
-      cellRenderer: (params: any) => 
-        params.value ? <Badge variant="outline" className="text-xs">{params.value}</Badge> : <span className="text-muted-foreground">—</span>
-    },
-    { 
-      field: "type", 
-      headerName: "Type", 
-      width: 110,
-      sortable: true,
-      filter: true,
-      hide: true, // Hidden since it's shown in the name column
-      cellRenderer: (params: any) => (
-        <Badge variant="secondary" className="capitalize text-xs">
-          {params.value}
-        </Badge>
-      )
-    },
-    { 
       field: "release_date", 
       headerName: "Release Date", 
-      width: 120,
+      width: 140,
       sortable: true,
-      filter: true,
-      hide: false,
+      filter: false,
       cellRenderer: (params: any) => (
         <div className="text-sm">
           {params.value ? (
@@ -216,7 +192,7 @@ const ProductCatalog = () => {
       headerName: "TCG", 
       width: 80,
       sortable: true,
-      filter: true,
+      filter: false,
       cellRenderer: (params: any) => (
         <div className="flex justify-center">
           <Badge 
@@ -235,8 +211,7 @@ const ProductCatalog = () => {
       headerName: "UPC", 
       width: 80,
       sortable: true,
-      filter: true,
-      hide: false,
+      filter: false,
       cellRenderer: (params: any) => (
         <div className="flex justify-center">
           <Badge 
@@ -254,6 +229,8 @@ const ProductCatalog = () => {
       headerName: "Actions",
       width: 80,
       pinned: 'right',
+      filter: false,
+      sortable: false,
       cellRenderer: (params: any) => (
         <div className="flex justify-center">
           <Button
@@ -348,16 +325,16 @@ const ProductCatalog = () => {
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 bg-background"
               />
             </div>
             
             {/* Type Filter */}
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-background">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-popover border border-border shadow-lg z-50">
                 <SelectItem value="all">All Types</SelectItem>
                 {uniqueTypes.map(type => (
                   <SelectItem key={type} value={type} className="capitalize">
@@ -369,10 +346,10 @@ const ProductCatalog = () => {
             
             {/* Verification Filter */}
             <Select value={verificationFilter} onValueChange={setVerificationFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-background">
                 <SelectValue placeholder="All Verification Status" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-popover border border-border shadow-lg z-50">
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="tcg_verified">TCG Verified</SelectItem>
                 <SelectItem value="upc_verified">UPC Verified</SelectItem>
@@ -381,6 +358,40 @@ const ProductCatalog = () => {
               </SelectContent>
             </Select>
           </div>
+          
+          {/* Active Filters Display */}
+          {(searchQuery || typeFilter !== "all" || verificationFilter !== "all") && (
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
+              <span className="text-sm text-muted-foreground">Active filters:</span>
+              {searchQuery && (
+                <Badge variant="secondary" className="text-xs">
+                  Search: "{searchQuery}"
+                  <X 
+                    className="h-3 w-3 ml-1 cursor-pointer" 
+                    onClick={() => setSearchQuery("")}
+                  />
+                </Badge>
+              )}
+              {typeFilter !== "all" && (
+                <Badge variant="secondary" className="text-xs capitalize">
+                  Type: {typeFilter}
+                  <X 
+                    className="h-3 w-3 ml-1 cursor-pointer" 
+                    onClick={() => setTypeFilter("all")}
+                  />
+                </Badge>
+              )}
+              {verificationFilter !== "all" && (
+                <Badge variant="secondary" className="text-xs">
+                  Status: {verificationFilter.replace('_', ' ')}
+                  <X 
+                    className="h-3 w-3 ml-1 cursor-pointer" 
+                    onClick={() => setVerificationFilter("all")}
+                  />
+                </Badge>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -407,11 +418,7 @@ const ProductCatalog = () => {
                   defaultColDef={{
                     resizable: true,
                     sortable: true,
-                    filter: true,
-                    filterParams: {
-                      buttons: ['reset', 'apply'],
-                      closeOnApply: true
-                    }
+                    filter: false
                   }}
                   onGridReady={onGridReady}
                   onSelectionChanged={handleSelectionChanged}
