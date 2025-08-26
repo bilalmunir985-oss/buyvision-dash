@@ -6,7 +6,8 @@ import {
   Barcode,
   Download,
   LogOut,
-  User
+  User,
+  Database
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +31,12 @@ const navigationItems = [
     title: "Dashboard", 
     url: "/", 
     icon: LayoutDashboard,
+    group: "Main"
+  },
+  { 
+    title: "Product Catalog", 
+    url: "/products", 
+    icon: Database,
     group: "Main"
   },
 ];

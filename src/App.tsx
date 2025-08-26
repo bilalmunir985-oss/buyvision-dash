@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Auth from "./pages/Auth";
 import ProductDetail from "./pages/ProductDetail";
+import ProductCatalog from "./pages/ProductCatalog";
 import TCGMapping from "./pages/TCGMapping";
 import UPCMapping from "./pages/UPCMapping";
 import ImportStatus from "./pages/ImportStatus";
@@ -33,6 +34,7 @@ const App = () => (
             
             {/* Protected routes */}
             <Route path="/" element={<ProtectedRoute><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/products" element={<ProtectedRoute><DashboardLayout><ProductCatalog /></DashboardLayout></ProtectedRoute>} />
             <Route path="/products/:id" element={<ProtectedRoute><DashboardLayout><ProductDetail /></DashboardLayout></ProtectedRoute>} />
             <Route path="/admin/mapping/tcg" element={<ProtectedRoute><DashboardLayout><TCGMapping /></DashboardLayout></ProtectedRoute>} />
             <Route path="/admin/mapping/upc" element={<ProtectedRoute><DashboardLayout><UPCMapping /></DashboardLayout></ProtectedRoute>} />
