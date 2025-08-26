@@ -106,33 +106,42 @@ const ProductCatalog = () => {
     { 
       field: "name", 
       headerName: "Product Name", 
-      flex: 2,
+      flex: 3,
+      minWidth: 200,
       sortable: true,
       filter: true,
       cellRenderer: (params: any) => (
-        <div className="flex items-center space-x-2 py-1">
-          <Package className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">{params.value}</span>
+        <div className="flex items-center space-x-2 py-2 cursor-pointer hover:bg-muted/50 rounded px-2 -mx-2">
+          <Package className="h-4 w-4 text-primary flex-shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium text-sm leading-tight truncate">{params.value}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {params.data.set_code && `${params.data.set_code} • `}
+              <span className="capitalize">{params.data.type}</span>
+            </p>
+          </div>
         </div>
       )
     },
     { 
       field: "set_code", 
       headerName: "Set Code", 
-      width: 120,
+      width: 100,
       sortable: true,
       filter: true,
+      hide: true, // Hidden since it's shown in the name column
       cellRenderer: (params: any) => 
-        params.value ? <Badge variant="outline">{params.value}</Badge> : <span className="text-muted-foreground">—</span>
+        params.value ? <Badge variant="outline" className="text-xs">{params.value}</Badge> : <span className="text-muted-foreground">—</span>
     },
     { 
       field: "type", 
       headerName: "Type", 
-      width: 140,
+      width: 110,
       sortable: true,
       filter: true,
+      hide: true, // Hidden since it's shown in the name column
       cellRenderer: (params: any) => (
-        <Badge variant="secondary" className="capitalize">
+        <Badge variant="secondary" className="capitalize text-xs">
           {params.value}
         </Badge>
       )
@@ -140,48 +149,82 @@ const ProductCatalog = () => {
     { 
       field: "release_date", 
       headerName: "Release Date", 
-      width: 140,
-      sortable: true,
-      filter: true,
-      cellRenderer: (params: any) => 
-        params.value ? new Date(params.value).toLocaleDateString() : <span className="text-muted-foreground">—</span>
-    },
-    { 
-      field: "tcg_is_verified", 
-      headerName: "TCG Verified", 
       width: 120,
       sortable: true,
       filter: true,
+      hide: false,
       cellRenderer: (params: any) => (
-        <Badge variant={params.value ? "default" : "secondary"}>
-          {params.value ? "✓" : "—"}
-        </Badge>
+        <div className="text-sm">
+          {params.value ? (
+            <div>
+              <div className="font-medium">{new Date(params.value).toLocaleDateString()}</div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(params.value).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              </div>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </div>
+      )
+    },
+    { 
+      field: "tcg_is_verified", 
+      headerName: "TCG", 
+      width: 80,
+      sortable: true,
+      filter: true,
+      cellRenderer: (params: any) => (
+        <div className="flex justify-center">
+          <Badge 
+            variant={params.value ? "default" : "secondary"} 
+            className={`w-6 h-6 p-0 rounded-full flex items-center justify-center text-xs ${
+              params.value ? 'bg-green-100 text-green-800 border-green-200' : ''
+            }`}
+          >
+            {params.value ? "✓" : "—"}
+          </Badge>
+        </div>
       )
     },
     { 
       field: "upc_is_verified", 
-      headerName: "UPC Verified", 
-      width: 120,
+      headerName: "UPC", 
+      width: 80,
       sortable: true,
       filter: true,
+      hide: false,
       cellRenderer: (params: any) => (
-        <Badge variant={params.value ? "default" : "secondary"}>
-          {params.value ? "✓" : "—"}
-        </Badge>
+        <div className="flex justify-center">
+          <Badge 
+            variant={params.value ? "default" : "secondary"} 
+            className={`w-6 h-6 p-0 rounded-full flex items-center justify-center text-xs ${
+              params.value ? 'bg-blue-100 text-blue-800 border-blue-200' : ''
+            }`}
+          >
+            {params.value ? "✓" : "—"}
+          </Badge>
+        </div>
       )
     },
     {
       headerName: "Actions",
-      width: 120,
+      width: 80,
+      pinned: 'right',
       cellRenderer: (params: any) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => handleRowClick(params.data)}
-          className="h-8 w-8 p-0"
-        >
-          <ExternalLink className="h-4 w-4" />
-        </Button>
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRowClick(params.data);
+            }}
+            className="h-8 w-8 p-0 hover:bg-primary/10"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        </div>
       )
     }
   ];
@@ -247,18 +290,23 @@ const ProductCatalog = () => {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Products Grid */}
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Package className="h-5 w-5" />
-                <span>Products</span>
-              </CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center space-x-2">
+                  <Package className="h-5 w-5" />
+                  <span>Products</span>
+                </CardTitle>
+                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                  <span>{filteredProducts.length} results</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
+              <div className="ag-theme-alpine w-full" style={{ height: 'calc(100vh - 300px)', minHeight: '500px' }}>
                 <AgGridReact
                   rowData={filteredProducts}
                   columnDefs={columnDefs}
@@ -266,14 +314,28 @@ const ProductCatalog = () => {
                     resizable: true,
                     sortable: true,
                     filter: true,
+                    filterParams: {
+                      buttons: ['reset', 'apply'],
+                      closeOnApply: true
+                    }
                   }}
                   onGridReady={onGridReady}
                   onSelectionChanged={handleSelectionChanged}
+                  onRowClicked={(event) => handleRowClick(event.data)}
                   rowSelection="single"
                   suppressRowClickSelection={false}
                   animateRows={true}
                   pagination={true}
-                  paginationPageSize={20}
+                  paginationPageSize={25}
+                  paginationPageSizeSelector={[10, 25, 50, 100]}
+                  suppressPaginationPanel={false}
+                  rowHeight={60}
+                  headerHeight={45}
+                  suppressHorizontalScroll={false}
+                  enableCellTextSelection={true}
+                  ensureDomOrder={true}
+                  rowClass="hover:bg-muted/30 cursor-pointer"
+                  suppressRowHoverHighlight={false}
                 />
               </div>
             </CardContent>
@@ -281,7 +343,7 @@ const ProductCatalog = () => {
         </div>
 
         {/* Product Details Panel */}
-        <div className="lg:col-span-1">
+        <div className="xl:col-span-1">
           {showDetails && selectedProduct ? (
             <Card>
               <CardHeader>
@@ -405,11 +467,12 @@ const ProductCatalog = () => {
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="sticky top-6">
               <CardContent className="pt-6">
                 <div className="text-center text-muted-foreground">
                   <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Select a product to view details</p>
+                  <p className="text-sm">Select a product to view details</p>
+                  <p className="text-xs mt-2">Click on any row in the table to see product information, contents, and verification status.</p>
                 </div>
               </CardContent>
             </Card>
