@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
             if (insertError) {
               console.error('Error inserting product:', insertError);
               errors++;
-              continue;
+              return;
             }
 
             productId = insertData.id;
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
             if (updateError) {
               console.error('Error updating product:', updateError);
               errors++;
-              continue;
+              return;
             }
 
             productId = existing.id;
