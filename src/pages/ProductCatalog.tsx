@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, Package, FileText, ExternalLink } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Package, FileText, ExternalLink, Filter, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Register AG Grid modules
@@ -41,6 +42,8 @@ const ProductCatalog = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [verificationFilter, setVerificationFilter] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productContents, setProductContents] = useState<ProductContent[]>([]);
   const [showDetails, setShowDetails] = useState(false);
@@ -92,15 +95,55 @@ const ProductCatalog = () => {
   };
 
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products;
+    let filtered = products;
     
-    const query = searchQuery.toLowerCase();
-    return products.filter(product => 
-      product.name.toLowerCase().includes(query) ||
-      product.set_code?.toLowerCase().includes(query) ||
-      product.type.toLowerCase().includes(query)
-    );
-  }, [products, searchQuery]);
+    // Text search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(product => 
+        product.name.toLowerCase().includes(query) ||
+        product.set_code?.toLowerCase().includes(query) ||
+        product.type.toLowerCase().includes(query)
+      );
+    }
+    
+    // Type filter
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(product => product.type === typeFilter);
+    }
+    
+    // Verification filter
+    if (verificationFilter !== "all") {
+      switch (verificationFilter) {
+        case "tcg_verified":
+          filtered = filtered.filter(product => product.tcg_is_verified);
+          break;
+        case "upc_verified":
+          filtered = filtered.filter(product => product.upc_is_verified);
+          break;
+        case "both_verified":
+          filtered = filtered.filter(product => product.tcg_is_verified && product.upc_is_verified);
+          break;
+        case "none_verified":
+          filtered = filtered.filter(product => !product.tcg_is_verified && !product.upc_is_verified);
+          break;
+      }
+    }
+    
+    return filtered;
+  }, [products, searchQuery, typeFilter, verificationFilter]);
+
+  // Get unique product types for filter dropdown
+  const uniqueTypes = useMemo(() => {
+    const types = [...new Set(products.map(p => p.type))].sort();
+    return types;
+  }, [products]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setTypeFilter("all");
+    setVerificationFilter("all");
+  };
 
   const columnDefs: ColDef[] = [
     { 
@@ -275,17 +318,68 @@ const ProductCatalog = () => {
         </Badge>
       </div>
 
-      {/* Search Bar */}
+      {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, set code, or type..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Filter className="h-4 w-4" />
+              <span className="font-medium">Filters</span>
+            </div>
+            {(searchQuery || typeFilter !== "all" || verificationFilter !== "all") && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearFilters}
+                className="h-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Type Filter */}
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {uniqueTypes.map(type => (
+                  <SelectItem key={type} value={type} className="capitalize">
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {/* Verification Filter */}
+            <Select value={verificationFilter} onValueChange={setVerificationFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Verification Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="tcg_verified">TCG Verified</SelectItem>
+                <SelectItem value="upc_verified">UPC Verified</SelectItem>
+                <SelectItem value="both_verified">Both Verified</SelectItem>
+                <SelectItem value="none_verified">Not Verified</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
