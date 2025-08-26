@@ -33,6 +33,16 @@ function deriveType(category?: string): string {
   return "other";
 }
 
+async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -50,9 +60,10 @@ Deno.serve(async (req) => {
     // First, fetch the SetList to get all available sets
     const SET_LIST_URL = "https://mtgjson.com/api/v5/SetList.json";
     
-    const setListResponse = await fetch(SET_LIST_URL);
+    console.log('Fetching SetList from MTGJSON...');
+    const setListResponse = await fetchWithTimeout(SET_LIST_URL, {}, 20000);
     if (!setListResponse.ok) {
-      throw new Error(`Failed to fetch SetList: ${setListResponse.statusText}`);
+      throw new Error(`Failed to fetch SetList: ${setListResponse.status} ${setListResponse.statusText}`);
     }
     
     const setListData = await setListResponse.json();
@@ -67,8 +78,8 @@ Deno.serve(async (req) => {
     let total = 0;
     
     // Process sets in batches to avoid timeouts
-    const BATCH_SIZE = 20; // Larger batches for efficiency
-    const MAX_RUNTIME_MS = 240000; // 4 minutes max runtime
+    const BATCH_SIZE = 8; // Small batches for stability within time limits
+    const MAX_RUNTIME_MS = 55000; // Keep under 60s function limit
     const startTime = Date.now();
     
     // Check if we have a resume point from query params
@@ -107,10 +118,10 @@ Deno.serve(async (req) => {
       const batchPromises = batch.map(async (set: any) => {
         try {
           const setUrl = `https://mtgjson.com/api/v5/${set.code}.json`;
-          const setResponse = await fetch(setUrl);
+          const setResponse = await fetchWithTimeout(setUrl, {}, 10000);
           
           if (!setResponse.ok) {
-            console.warn(`Failed to fetch set ${set.code}: ${setResponse.statusText}`);
+            console.warn(`Failed to fetch set ${set.code}: ${setResponse.status} ${setResponse.statusText}`);
             return [];
           }
           
