@@ -47,16 +47,64 @@ Deno.serve(async (req) => {
 
     console.log('Starting MTGJSON import...');
     
-    const MTGJSON_URL = "https://mtgjson.com/api/v5/AllSealedProducts.json";
+    // First, fetch the SetList to get all available sets
+    const SET_LIST_URL = "https://mtgjson.com/api/v5/SetList.json";
     
-    // Fetch MTGJSON data
-    const response = await fetch(MTGJSON_URL);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch MTGJSON data: ${response.statusText}`);
+    const setListResponse = await fetch(SET_LIST_URL);
+    if (!setListResponse.ok) {
+      throw new Error(`Failed to fetch SetList: ${setListResponse.statusText}`);
     }
     
-    const rawData = await response.json();
-    const sealedProducts: MTGJSONProduct[] = rawData.data;
+    const setListData = await setListResponse.json();
+    const sets = setListData.data;
+    
+    console.log(`Found ${sets.length} sets. Fetching sealed products...`);
+    
+    const sealedProducts: MTGJSONProduct[] = [];
+    let processedSets = 0;
+    
+    // Process sets in batches to avoid timeouts
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < sets.length; i += BATCH_SIZE) {
+      const batch = sets.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(async (set: any) => {
+        try {
+          const setUrl = `https://mtgjson.com/api/v5/${set.code}.json`;
+          const setResponse = await fetch(setUrl);
+          
+          if (!setResponse.ok) {
+            console.warn(`Failed to fetch set ${set.code}: ${setResponse.statusText}`);
+            return [];
+          }
+          
+          const setData = await setResponse.json();
+          const setProducts = setData.data?.sealedProduct || [];
+          
+          // Add set metadata to each product
+          return setProducts.map((product: any) => ({
+            ...product,
+            productId: product.uuid || `${set.code}-${product.name}`,
+            setCode: set.code,
+            setName: set.name
+          }));
+        } catch (error) {
+          console.warn(`Error fetching set ${set.code}:`, error);
+          return [];
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      batchResults.forEach(products => sealedProducts.push(...products));
+      
+      processedSets += batch.length;
+      console.log(`Processed ${processedSets}/${sets.length} sets, found ${sealedProducts.length} products so far`);
+      
+      // Add a small delay between batches
+      if (i + BATCH_SIZE < sets.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
     
     console.log(`Processing ${sealedProducts.length} products...`);
     
