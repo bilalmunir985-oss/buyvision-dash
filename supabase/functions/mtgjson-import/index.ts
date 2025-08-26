@@ -167,20 +167,40 @@ Deno.serve(async (req) => {
           }
 
           // Insert new contents
-          if (product.contents && product.contents.length > 0) {
-            const contents = product.contents.map((content: any) => ({
-              product_id: productId,
-              contained_name: content.name,
-              quantity: content.count,
-              rarity: content.rarity || null,
-            }));
+          if (product.contents) {
+            const contents: any[] = [];
+            
+            // Handle different content structures in MTGJSON
+            if (product.contents.pack && Array.isArray(product.contents.pack)) {
+              // New format: contents.pack array
+              product.contents.pack.forEach((pack: any) => {
+                contents.push({
+                  product_id: productId,
+                  contained_name: pack.set ? `${pack.set} Pack` : (pack.code || 'Unknown Pack'),
+                  quantity: 1,
+                  rarity: null,
+                });
+              });
+            } else if (Array.isArray(product.contents)) {
+              // Legacy format: contents array
+              product.contents.forEach((content: any) => {
+                contents.push({
+                  product_id: productId,
+                  contained_name: content.name,
+                  quantity: content.count || 1,
+                  rarity: content.rarity || null,
+                });
+              });
+            }
 
-            const { error: contentsError } = await supabaseClient
-              .from('product_contents')
-              .insert(contents);
+            if (contents.length > 0) {
+              const { error: contentsError } = await supabaseClient
+                .from('product_contents')
+                .insert(contents);
 
-            if (contentsError) {
-              console.error('Error inserting product contents:', contentsError);
+              if (contentsError) {
+                console.error('Error inserting product contents:', contentsError);
+              }
             }
           }
 
