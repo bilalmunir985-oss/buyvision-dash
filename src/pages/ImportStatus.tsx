@@ -2,16 +2,16 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { RefreshCw, Download, CheckCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { RefreshCw, Download, CheckCircle, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function ImportStatus() {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   const handleRunJob = async (jobName: string, endpoint: string) => {
-    setLoading(jobName);
+    setLoadingStates(prev => ({ ...prev, [jobName]: true }));
 
     try {
       const response = await supabase.functions.invoke(endpoint);
@@ -30,69 +30,71 @@ export default function ImportStatus() {
         variant: "destructive",
       });
     } finally {
-      setLoading(null);
+      setLoadingStates(prev => ({ ...prev, [jobName]: false }));
     }
   };
+
+  const jobs = [
+    {
+      name: "MTGJSON Import",
+      endpoint: "mtgjson-import",
+      description: "Import product catalog from MTGJSON (single batch)",
+      schedule: "Daily at 4:00 AM UTC",
+      icon: Download,
+    },
+    {
+      name: "Complete Batch Import",
+      endpoint: "batch-import-all",
+      description: "Automatically import ALL products in multiple batches",
+      schedule: "Manual only",
+      icon: Zap,
+      variant: "destructive" as const,
+    },
+    {
+      name: "Fetch Prices",
+      endpoint: "fetch-prices",
+      description: "Collect daily pricing data from TCGplayer",
+      schedule: "Daily at 4:01 AM UTC",
+      icon: CheckCircle,
+    },
+  ];
 
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Import Status</h1>
-        <p className="text-muted-foreground">Monitor data import jobs</p>
+        <p className="text-muted-foreground">Monitor and trigger data import jobs</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">MTGJSON Import</CardTitle>
-            <Download className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Import sealed products</p>
-                <Badge variant="outline">Daily 4:00 AM</Badge>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {jobs.map((job) => (
+          <Card key={job.name} className={job.variant === "destructive" ? "border-orange-200" : ""}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{job.name}</CardTitle>
+              <job.icon className={`h-4 w-4 ${job.variant === "destructive" ? "text-orange-600" : "text-muted-foreground"}`} />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">{job.description}</p>
+                  <Badge variant={job.variant === "destructive" ? "secondary" : "outline"}>{job.schedule}</Badge>
+                </div>
+                <Button 
+                  onClick={() => handleRunJob(job.name, job.endpoint)} 
+                  disabled={loadingStates[job.name]}
+                  className="w-full"
+                  variant={job.variant || "default"}
+                >
+                  {loadingStates[job.name] ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    'Run Now'
+                  )}
+                </Button>
               </div>
-              <Button
-                size="sm"
-                onClick={() => handleRunJob('MTGJSON Import', 'mtgjson-import')}
-                disabled={loading === 'MTGJSON Import'}
-              >
-                {loading === 'MTGJSON Import' ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Run Now'
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Price Scraping</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Fetch TCGplayer prices</p>
-                <Badge variant="outline">Daily 4:01 AM</Badge>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => handleRunJob('Price Scraping', 'fetch-prices')}
-                disabled={loading === 'Price Scraping'}
-              >
-                {loading === 'Price Scraping' ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Run Now'
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   );

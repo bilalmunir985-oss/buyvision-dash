@@ -67,15 +67,39 @@ Deno.serve(async (req) => {
     let total = 0;
     
     // Process sets in batches to avoid timeouts
-    const BATCH_SIZE = 5; // Smaller batches for stability
-    const MAX_RUNTIME_MS = 50000; // 50 seconds max runtime
+    const BATCH_SIZE = 20; // Larger batches for efficiency
+    const MAX_RUNTIME_MS = 240000; // 4 minutes max runtime
     const startTime = Date.now();
     
-    for (let i = 0; i < sets.length; i += BATCH_SIZE) {
+    // Check if we have a resume point from query params
+    const url = new URL(req.url);
+    const resumeFrom = parseInt(url.searchParams.get('resume') || '0');
+    
+    console.log(`Starting import${resumeFrom > 0 ? ` from set ${resumeFrom}` : ''} with batch size ${BATCH_SIZE}`);
+    
+    for (let i = resumeFrom; i < sets.length; i += BATCH_SIZE) {
       // Check if we're approaching timeout
       if (Date.now() - startTime > MAX_RUNTIME_MS) {
         console.log(`Timeout protection: stopping after ${processedSets} sets to avoid shutdown`);
-        break;
+        console.log(`To resume, call with ?resume=${i} parameter`);
+        
+        return new Response(
+          JSON.stringify({
+            status: 'partial_success',
+            added,
+            updated,
+            errors,
+            total,
+            processedSets,
+            remainingSets: sets.length - i,
+            resumeFrom: i,
+            message: `Processed ${processedSets} sets. To continue, call the function with ?resume=${i}`
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
       }
       
       const batch = sets.slice(i, i + BATCH_SIZE);
@@ -109,8 +133,12 @@ Deno.serve(async (req) => {
       const batchResults = await Promise.all(batchPromises);
       const productsToProcess: any[] = batchResults.flat();
 
-      // Upsert products for this batch immediately to avoid timeouts
-      for (const product of productsToProcess) {
+      // Process products in smaller chunks within each batch for better performance
+      const PRODUCT_CHUNK_SIZE = 10;
+      for (let j = 0; j < productsToProcess.length; j += PRODUCT_CHUNK_SIZE) {
+        const chunk = productsToProcess.slice(j, j + PRODUCT_CHUNK_SIZE);
+        
+        await Promise.all(chunk.map(async (product) => {
         try {
           const flatProduct = {
             mtgjson_uuid: product.productId,
@@ -218,6 +246,7 @@ Deno.serve(async (req) => {
           console.error(`Error processing product ${product.productId}:`, error);
           errors++;
         }
+        }));
       }
       
       processedSets += batch.length;
