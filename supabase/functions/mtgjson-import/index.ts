@@ -67,8 +67,17 @@ Deno.serve(async (req) => {
     let total = 0;
     
     // Process sets in batches to avoid timeouts
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 5; // Smaller batches for stability
+    const MAX_RUNTIME_MS = 50000; // 50 seconds max runtime
+    const startTime = Date.now();
+    
     for (let i = 0; i < sets.length; i += BATCH_SIZE) {
+      // Check if we're approaching timeout
+      if (Date.now() - startTime > MAX_RUNTIME_MS) {
+        console.log(`Timeout protection: stopping after ${processedSets} sets to avoid shutdown`);
+        break;
+      }
+      
       const batch = sets.slice(i, i + BATCH_SIZE);
       
       const batchPromises = batch.map(async (set: any) => {
