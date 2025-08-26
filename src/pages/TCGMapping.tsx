@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { Loader2, Search, Check, ExternalLink } from 'lucide-react';
 
 interface Product {
@@ -183,10 +183,20 @@ export default function TCGMapping() {
                         <h4 className="font-medium">{result.productName}</h4>
                         <p className="text-sm text-muted-foreground">ID: {result.productId}</p>
                       </div>
-                      <Button size="sm" onClick={() => handleVerifyMatch(result)}>
-                        <Check className="h-4 w-4 mr-1" />
-                        Verify
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`https://www.tcgplayer.com/product/${result.productId}`, '_blank')}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        <Button size="sm" onClick={() => handleVerifyMatch(result)}>
+                          <Check className="h-4 w-4 mr-1" />
+                          Verify
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
