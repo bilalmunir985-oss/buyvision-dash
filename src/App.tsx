@@ -10,6 +10,7 @@ import { DashboardLayout } from "./components/DashboardLayout";
 // Pages
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import Auth from "./pages/Auth";
 import ProductDetail from "./pages/ProductDetail";
 import TCGMapping from "./pages/TCGMapping";
 import UPCMapping from "./pages/UPCMapping";
@@ -27,6 +28,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             {/* Public routes */}
+            <Route path="/auth" element={<Auth />} />
             <Route path="/login" element={<Login />} />
             
             {/* Protected routes */}

@@ -1,183 +1,238 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
-import { ColDef, GridReadyEvent } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
-import '../styles/ag-grid-theme.css';
+import { ColDef } from 'ag-grid-community';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Package, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
-import { getDashboardMetrics } from '@/utils/mockData';
-import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/components/ui/use-toast';
+import { Loader2 } from 'lucide-react';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 
 interface DashboardRow {
   id: string;
   name: string;
   set_code: string;
   type: string;
-  lowest_total_price: number;
-  lowest_item_price_only: number;
-  target_product_cost: number;
-  max_product_cost: number;
+  lowest_total_price: number | null;
+  lowest_item_price: number | null;
+  target_product_cost: number | null;
+  max_product_cost: number | null;
 }
 
-const Dashboard = () => {
+export default function Dashboard() {
+  const [rowData, setRowData] = useState<DashboardRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    avgSavings: 0,
+    bestDeal: 0,
+    highPriced: 0
+  });
   const navigate = useNavigate();
-  const metrics = getDashboardMetrics();
+  const { toast } = useToast();
 
-  const columnDefs: ColDef<DashboardRow>[] = useMemo(() => [
+  const columnDefs: ColDef[] = useMemo(() => [
     {
       field: 'name',
       headerName: 'Product Name',
       flex: 2,
-      minWidth: 250,
       cellRenderer: (params: any) => (
-        <Button
-          variant="ghost"
-          className="h-auto p-0 justify-start font-medium text-primary hover:text-primary-hover"
+        <button
           onClick={() => navigate(`/products/${params.data.id}`)}
+          className="text-left text-primary hover:underline w-full"
         >
           {params.value}
-        </Button>
-      ),
+        </button>
+      )
     },
     {
       field: 'set_code',
       headerName: 'Set Code',
       width: 120,
       cellRenderer: (params: any) => (
-        <Badge variant="outline" className="font-mono">
-          {params.value}
-        </Badge>
-      ),
+        <Badge variant="secondary">{params.value}</Badge>
+      )
     },
     {
       field: 'type',
-      headerName: 'Product Type', 
-      flex: 1,
-      minWidth: 150,
+      headerName: 'Type',
+      width: 130,
+      cellRenderer: (params: any) => (
+        <Badge variant="outline">{params.value}</Badge>
+      )
     },
     {
       field: 'lowest_total_price',
-      headerName: 'Lowest Total Price',
-      width: 160,
-      cellRenderer: (params: any) => (
-        <span className="font-medium text-success">
-          ${params.value?.toFixed(2)}
-        </span>
-      ),
+      headerName: 'Lowest Total',
+      width: 130,
+      valueFormatter: (params) => params.value ? `$${params.value.toFixed(2)}` : 'N/A'
     },
     {
-      field: 'lowest_item_price_only',
-      headerName: 'Lowest Item Price',
-      width: 160,
-      cellRenderer: (params: any) => (
-        <span className="text-foreground">
-          ${params.value?.toFixed(2)}
-        </span>
-      ),
+      field: 'lowest_item_price',
+      headerName: 'Lowest Item',
+      width: 130,
+      valueFormatter: (params) => params.value ? `$${params.value.toFixed(2)}` : 'N/A'
     },
     {
       field: 'target_product_cost',
       headerName: 'Target Cost',
       width: 130,
-      cellRenderer: (params: any) => (
-        <span className="text-muted-foreground">
-          ${params.value?.toFixed(2)}
-        </span>
-      ),
+      valueFormatter: (params) => params.value ? `$${params.value.toFixed(2)}` : 'N/A'
     },
     {
       field: 'max_product_cost',
       headerName: 'Max Cost',
-      width: 120,
-      cellRenderer: (params: any) => (
-        <span className="text-warning">
-          ${params.value?.toFixed(2)}
-        </span>
-      ),
-    },
+      width: 130,
+      valueFormatter: (params) => params.value ? `$${params.value.toFixed(2)}` : 'N/A'
+    }
   ], [navigate]);
 
-  const onGridReady = (params: GridReadyEvent) => {
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch today's metrics with product data
+      const { data: metricsData, error: metricsError } = await supabase
+        .from('daily_metrics')
+        .select(`
+          *,
+          products:product_id (
+            id,
+            name,
+            set_code,
+            type
+          )
+        `)
+        .eq('as_of_date', new Date().toISOString().split('T')[0])
+        .order('lowest_total_price', { ascending: false });
+
+      if (metricsError) {
+        console.error('Error fetching metrics:', metricsError);
+        toast({
+          title: "Error loading dashboard data",
+          description: "Please try again later",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Transform data for ag-Grid
+      const transformedData = (metricsData || []).map(metric => ({
+        id: metric.products?.id || '',
+        name: metric.products?.name || 'Unknown Product',
+        set_code: metric.products?.set_code || 'N/A',
+        type: metric.products?.type || 'unknown',
+        lowest_total_price: metric.lowest_total_price,
+        lowest_item_price: metric.lowest_item_price,
+        target_product_cost: metric.target_product_cost,
+        max_product_cost: metric.max_product_cost,
+      }));
+
+      setRowData(transformedData);
+
+      // Calculate stats
+      const totalProducts = transformedData.length;
+      const validPrices = transformedData.filter(item => item.lowest_total_price && item.target_product_cost);
+      const avgSavings = validPrices.length > 0 
+        ? validPrices.reduce((sum, item) => sum + ((item.lowest_total_price! - item.target_product_cost!) / item.lowest_total_price! * 100), 0) / validPrices.length
+        : 0;
+      const bestDeal = validPrices.length > 0 
+        ? Math.max(...validPrices.map(item => (item.lowest_total_price! - item.target_product_cost!) / item.lowest_total_price! * 100))
+        : 0;
+      const highPriced = transformedData.filter(item => item.lowest_total_price && item.lowest_total_price > 100).length;
+
+      setStats({
+        totalProducts,
+        avgSavings,
+        bestDeal,
+        highPriced
+      });
+
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error loading dashboard data",
+        description: "Please try again later",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onGridReady = (params: any) => {
     params.api.sizeColumnsToFit();
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">
-          Today's product metrics and pricing data
+          Today's MTG product pricing metrics and analytics
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{metrics.length}</div>
+            <div className="text-2xl font-bold">{stats.totalProducts}</div>
             <p className="text-xs text-muted-foreground">
-              Products being tracked
+              Products with pricing data
             </p>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg. Savings</CardTitle>
-            <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">
-              ${(
-                metrics.reduce((acc, item) => 
-                  acc + (item.max_product_cost - item.lowest_total_price), 0
-                ) / metrics.length
-              ).toFixed(2)}
-            </div>
+            <div className="text-2xl font-bold">{stats.avgSavings.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              Per product savings
+              Average potential margin
             </p>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Best Deal</CardTitle>
-            <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">
-              ${Math.max(...metrics.map(item => 
-                item.max_product_cost - item.lowest_total_price
-              )).toFixed(2)}
-            </div>
+            <div className="text-2xl font-bold">{stats.bestDeal.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground">
-              Maximum savings found
+              Highest margin opportunity
             </p>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">High Priced</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">
-              {metrics.filter(item => 
-                item.lowest_total_price > item.target_product_cost
-              ).length}
-            </div>
+            <div className="text-2xl font-bold">{stats.highPriced}</div>
             <p className="text-xs text-muted-foreground">
-              Above target price
+              Products over $100
             </p>
           </CardContent>
         </Card>
@@ -186,30 +241,27 @@ const Dashboard = () => {
       {/* Data Grid */}
       <Card>
         <CardHeader>
-          <CardTitle>Today's Metrics</CardTitle>
+          <CardTitle>Today's Pricing Metrics</CardTitle>
           <CardDescription>
-            Current pricing data for all tracked products. Click on a product name to view details.
+            Current pricing data for MTG sealed products
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="ag-theme-alpine" style={{ height: '500px', width: '100%' }}>
+          <div className="ag-theme-alpine h-96 w-full">
             <AgGridReact
-              rowData={metrics}
+              rowData={rowData}
               columnDefs={columnDefs}
               defaultColDef={{
                 sortable: true,
                 filter: true,
                 resizable: true,
               }}
-              animateRows={true}
-              rowSelection="single"
               onGridReady={onGridReady}
+              animateRows={true}
             />
           </div>
         </CardContent>
       </Card>
     </div>
   );
-};
-
-export default Dashboard;
+}

@@ -57,7 +57,7 @@ const adminItems = [
 
 export function AppSidebar() {
   const { state } = useSidebar();
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const location = useLocation();
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
@@ -142,17 +142,17 @@ export function AppSidebar() {
             <div className="flex items-center justify-between p-2">
               <div className="flex items-center space-x-2 min-w-0">
                 <User className="h-4 w-4 flex-shrink-0 text-sidebar-foreground" />
-                {!collapsed && user && (
-                  <span className="text-sm text-sidebar-foreground truncate">
-                    {user.name}
-                  </span>
-                )}
+                 {!collapsed && user && (
+                   <span className="text-sm text-sidebar-foreground truncate">
+                     {user.email}
+                   </span>
+                 )}
               </div>
               {!collapsed && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={logout}
+                  onClick={signOut}
                   className="text-sidebar-foreground hover:text-sidebar-accent-foreground h-8 w-8 p-0"
                 >
                   <LogOut className="h-4 w-4" />

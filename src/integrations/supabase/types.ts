@@ -14,7 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      daily_metrics: {
+        Row: {
+          as_of_date: string
+          created_at: string
+          id: string
+          lowest_item_price: number | null
+          lowest_total_price: number | null
+          max_product_cost: number | null
+          num_listings: number | null
+          product_id: string
+          product_url: string | null
+          target_product_cost: number | null
+          total_quantity_listed: number | null
+        }
+        Insert: {
+          as_of_date: string
+          created_at?: string
+          id?: string
+          lowest_item_price?: number | null
+          lowest_total_price?: number | null
+          max_product_cost?: number | null
+          num_listings?: number | null
+          product_id: string
+          product_url?: string | null
+          target_product_cost?: number | null
+          total_quantity_listed?: number | null
+        }
+        Update: {
+          as_of_date?: string
+          created_at?: string
+          id?: string
+          lowest_item_price?: number | null
+          lowest_total_price?: number | null
+          max_product_cost?: number | null
+          num_listings?: number | null
+          product_id?: string
+          product_url?: string | null
+          target_product_cost?: number | null
+          total_quantity_listed?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_metrics_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_contents: {
+        Row: {
+          contained_name: string
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number | null
+          rarity: string | null
+        }
+        Insert: {
+          contained_name: string
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity?: number | null
+          rarity?: string | null
+        }
+        Update: {
+          contained_name?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number | null
+          rarity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_contents_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          language: string | null
+          mtgjson_uuid: string
+          name: string
+          raw_json: Json | null
+          release_date: string | null
+          set_code: string | null
+          tcg_is_verified: boolean
+          tcgplayer_product_id: number | null
+          type: string
+          upc: string | null
+          upc_is_verified: boolean
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          language?: string | null
+          mtgjson_uuid: string
+          name: string
+          raw_json?: Json | null
+          release_date?: string | null
+          set_code?: string | null
+          tcg_is_verified?: boolean
+          tcgplayer_product_id?: number | null
+          type: string
+          upc?: string | null
+          upc_is_verified?: boolean
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          language?: string | null
+          mtgjson_uuid?: string
+          name?: string
+          raw_json?: Json | null
+          release_date?: string | null
+          set_code?: string | null
+          tcg_is_verified?: boolean
+          tcgplayer_product_id?: number | null
+          type?: string
+          upc?: string | null
+          upc_is_verified?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      upc_candidates: {
+        Row: {
+          created_at: string | null
+          id: string
+          product_id: string
+          scraped_name: string | null
+          scraped_upc: string | null
+          wpn_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          product_id: string
+          scraped_name?: string | null
+          scraped_upc?: string | null
+          wpn_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          product_id?: string
+          scraped_name?: string | null
+          scraped_upc?: string | null
+          wpn_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upc_candidates_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
