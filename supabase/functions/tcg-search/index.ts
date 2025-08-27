@@ -82,27 +82,70 @@ async function tryHtml(query: string) {
   }
   
   const html = await r.text();
+  console.log('HTML length received:', html.length);
   
-  // Extract product links and names from HTML
-  const productRegex = /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g;
+  // Multiple regex patterns to try different HTML structures
+  const patterns = [
+    // Pattern 1: Standard product links
+    /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g,
+    // Pattern 2: Data attributes
+    /data-productid="(\d+)"[^>]*>[^<]*<[^>]*>([^<]+)/g,
+    // Pattern 3: Product cards with IDs
+    /<a[^>]+href="[^"]*\/product\/(\d+)[^"]*"[^>]*>[^<]*<[^>]*class="[^"]*product[^"]*"[^>]*>([^<]+)/g,
+    // Pattern 4: Alternative structure
+    /<div[^>]+data-productid="(\d+)"[^>]*>[\s\S]*?<[^>]*>([^<]*(?:booster|bundle|box|deck|case)[^<]*)<\/[^>]*>/gi
+  ];
+  
   const results: Array<{productId: number, productName: string}> = [];
-  let match;
   
-  while ((match = productRegex.exec(html)) !== null && results.length < 10) {
-    const productId = parseInt(match[1]);
-    const productName = match[2].trim();
+  for (const pattern of patterns) {
+    console.log('Trying pattern:', pattern.source);
+    let match;
+    const patternResults: Array<{productId: number, productName: string}> = [];
     
-    // Filter for sealed products
-    if (productName.toLowerCase().includes('booster') || 
-        productName.toLowerCase().includes('bundle') || 
-        productName.toLowerCase().includes('box') ||
-        productName.toLowerCase().includes('deck') ||
-        productName.toLowerCase().includes('case')) {
-      results.push({
-        productId,
-        productName
-      });
+    while ((match = pattern.exec(html)) !== null && patternResults.length < 10) {
+      const productId = parseInt(match[1]);
+      const productName = match[2].trim().replace(/\s+/g, ' ');
+      
+      console.log('Found potential match:', { productId, productName });
+      
+      // Filter for sealed products - be more permissive
+      if (productName && (
+          productName.toLowerCase().includes('booster') || 
+          productName.toLowerCase().includes('bundle') || 
+          productName.toLowerCase().includes('box') ||
+          productName.toLowerCase().includes('deck') ||
+          productName.toLowerCase().includes('case') ||
+          productName.toLowerCase().includes('collector') ||
+          productName.toLowerCase().includes('draft') ||
+          productName.toLowerCase().includes('set booster')
+        )) {
+        patternResults.push({
+          productId,
+          productName
+        });
+      }
     }
+    
+    if (patternResults.length > 0) {
+      console.log(`Pattern found ${patternResults.length} results`);
+      results.push(...patternResults);
+      break; // Use first successful pattern
+    }
+  }
+  
+  // If no patterns work, log some HTML content for debugging
+  if (results.length === 0) {
+    console.log('No matches found. HTML sample:', html.substring(0, 1000));
+    
+    // Try a very broad search to see if there are any product IDs at all
+    const broadPattern = /(\d{6,})/g;
+    const potentialIds = [];
+    let broadMatch;
+    while ((broadMatch = broadPattern.exec(html)) !== null && potentialIds.length < 5) {
+      potentialIds.push(broadMatch[1]);
+    }
+    console.log('Potential product IDs found:', potentialIds);
   }
   
   console.log('HTML results found:', results.length);
@@ -120,31 +163,24 @@ Deno.serve(async (req: Request) => {
 
   console.log('Searching for:', query);
 
-  // Try only working payload formats (retry across known shapes)
+  // Try correct TCGplayer API payload formats
   const variants = [
-    // v1: filters as object with string values
+    // v1: Current working format (array of name/values objects)
     {
       sort: 'productName',
       limit: 10,
       offset: 0,
-      filters: {
-        productLineName: 'magic',
-        categoryName: 'Sealed Products'
+      filters: [
+        { name: 'productLineName', values: ['magic'] },
+        { name: 'categoryName', values: ['Sealed Products'] }
+      ],
+      context: {
+        shippingCountry: 'US',
+        language: 'en'
       },
-      query
+      search: query
     },
-    // v2: filters as object with array values
-    {
-      sort: 'productName',
-      limit: 10,
-      offset: 0,
-      filters: {
-        productLineName: ['magic'],
-        categoryName: ['Sealed Products']
-      },
-      query
-    },
-    // v3: filters as array of name/values objects
+    // v2: Alternative with query field
     {
       sort: 'productName',
       limit: 10,
@@ -155,16 +191,13 @@ Deno.serve(async (req: Request) => {
       ],
       query
     },
-    // v4: alternative payload with search.text
+    // v3: Minimal working format
     {
-      algorithm: 'sales',
-      offset: 0,
       limit: 10,
-      filters: {
-        productLineName: ['magic'],
-        categoryName: ['Sealed Products']
-      },
-      search: { text: query }
+      filters: [
+        { name: 'productLineName', values: ['magic'] }
+      ],
+      search: query
     }
   ];
 
