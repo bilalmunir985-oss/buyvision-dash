@@ -62,6 +62,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "daily_metrics_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vw_unmapped_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_contents: {
@@ -95,6 +102,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_contents_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vw_unmapped_products"
             referencedColumns: ["id"]
           },
         ]
@@ -186,14 +200,44 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "upc_candidates_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vw_unmapped_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      vw_unmapped_products: {
+        Row: {
+          id: string | null
+          name: string | null
+          set_code: string | null
+          type: string | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+          set_code?: string | null
+          type?: string | null
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+          set_code?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      import_mtgjson_products: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
