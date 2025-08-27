@@ -53,6 +53,7 @@ Deno.serve(async (req) => {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept-Language': 'en-US,en;q=0.9',
       'Cache-Control': 'no-cache',
+      'X-Requested-With': 'XMLHttpRequest',
     } as const;
 
     const tryFetch = async (body: any, useMpfev = true) => {
@@ -75,7 +76,34 @@ Deno.serve(async (req) => {
         .filter((r) => Number.isFinite(r.productId) && r.productName);
     };
 
-    const bodyV1 = {
+    const bodyWrappedV1 = {
+      searchRequestBody: {
+        sort: 'productName',
+        limit: 12,
+        offset: 0,
+        filters: {
+          productLineName: 'magic',
+          categoryName: 'Sealed Products',
+        },
+        query: enrichedQuery,
+      },
+    };
+
+    const bodyWrappedV2 = {
+      searchRequestBody: {
+        sort: 'productName',
+        limit: 12,
+        offset: 0,
+        filters: [
+          { name: 'ProductLineName', values: ['Magic'] },
+          { name: 'CategoryName', values: ['Sealed Products'] },
+        ],
+        query: enrichedQuery,
+      },
+    };
+
+    // Legacy formats kept as fallback in case TCGplayer changes again
+    const legacyV1 = {
       sort: 'productName',
       limit: 12,
       offset: 0,
@@ -86,7 +114,7 @@ Deno.serve(async (req) => {
       query: enrichedQuery,
     };
 
-    const bodyV2 = {
+    const legacyV2 = {
       sort: 'productName',
       limit: 12,
       offset: 0,
@@ -99,11 +127,15 @@ Deno.serve(async (req) => {
 
     let results: TCGSearchResult[] = [];
 
-    // Try primary (with mpfev), then without, then alt body format
-    results = await tryFetch(bodyV1, true);
-    if (!results.length) results = await tryFetch(bodyV1, false);
-    if (!results.length) results = await tryFetch(bodyV2, true);
-    if (!results.length) results = await tryFetch(bodyV2, false);
+    // Try wrapped formats (preferred), then legacy formats
+    results = await tryFetch(bodyWrappedV1, true);
+    if (!results.length) results = await tryFetch(bodyWrappedV1, false);
+    if (!results.length) results = await tryFetch(bodyWrappedV2, true);
+    if (!results.length) results = await tryFetch(bodyWrappedV2, false);
+    if (!results.length) results = await tryFetch(legacyV1, true);
+    if (!results.length) results = await tryFetch(legacyV1, false);
+    if (!results.length) results = await tryFetch(legacyV2, true);
+    if (!results.length) results = await tryFetch(legacyV2, false);
 
     // Score and dedupe results
     const tokens = new Set(enrichedQuery.toLowerCase().split(/\s+/).filter(Boolean));
