@@ -8,6 +8,9 @@ interface TCGSearchResult {
   productName: string;
 }
 
+// Sleep utility for rate limiting
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -27,137 +30,94 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Light enrichment (keeps us on a single real JSON endpoint, no HTML fallback)
-    const enrichType = (t?: string) => {
-      if (!t) return '';
-      const tl = String(t).toLowerCase();
-      if (tl.includes('set')) return 'Set Booster';
-      if (tl.includes('draft')) return 'Draft Booster';
-      if (tl.includes('collector')) return 'Collector Booster';
-      if (tl.includes('bundle')) return 'Bundle';
-      if (tl.includes('box')) return 'Box';
-      if (tl.includes('case')) return 'Case';
-      if (tl.includes('pack')) return 'Pack';
-      if (tl.includes('commander')) return 'Commander Deck';
-      return '';
+    console.log('Searching for:', query, 'Set:', setCode, 'Type:', type);
+
+    // Retry function with exponential backoff
+    const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response> => {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          if (i > 0) {
+            const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s
+            console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms delay`);
+            await sleep(delay);
+          }
+
+          const response = await fetch(url, options);
+          
+          // If we get a 500, retry. Otherwise return the response (even if it's another error)
+          if (response.status !== 500) {
+            return response;
+          }
+          
+          if (i === maxRetries - 1) {
+            return response; // Last attempt, return whatever we got
+          }
+          
+          console.log(`Got 500 error, retrying... (${i + 1}/${maxRetries})`);
+        } catch (error) {
+          console.error(`Attempt ${i + 1} failed:`, error);
+          if (i === maxRetries - 1) {
+            throw error;
+          }
+        }
+      }
+      throw new Error('All retry attempts failed');
     };
 
-    const enrichedQuery = [query, setCode, enrichType(type)].filter(Boolean).join(' ');
-
-    const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
-
-    const baseHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json, text/plain, */*',
-      'Origin': 'https://www.tcgplayer.com',
-      'Referer': 'https://www.tcgplayer.com/search/magic/product',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Cache-Control': 'no-cache',
-      'X-Requested-With': 'XMLHttpRequest',
-    } as const;
-
-    // Real endpoint only – try known shapes that TCGplayer accepts. No HTML fallback.
-    const bodies: any[] = [
-      // 1) Wrapped, PascalCase filters keys and array values
-      {
-        searchRequestBody: {
-          query: enrichedQuery,
-          sort: 'productName',
-          limit: 12,
-          offset: 0,
-          filters: {
-            ProductLineName: ['Magic'],
-            CategoryName: ['Sealed Products'],
-          },
-        },
-      },
-      // 2) Wrapped, alternative casing
-      {
-        searchRequestBody: {
-          QueryString: enrichedQuery,
-          Sort: 'productName',
-          Size: 12,
-          From: 0,
-          Filters: {
-            ProductLineName: ['Magic'],
-            CategoryName: ['Sealed Products'],
-          },
-        },
-      },
-      // 3) Wrapped, lower-case filter keys
-      {
-        searchRequestBody: {
-          query: enrichedQuery,
-          sort: 'productName',
-          limit: 12,
-          offset: 0,
-          filters: {
-            productLineName: ['magic'],
-            categoryName: ['Sealed Products'],
-          },
-        },
-      },
-      // 4) Unwrapped body (as sometimes seen in site requests)
-      {
-        query: enrichedQuery,
+    // Try the most successful format first based on the logs
+    const requestBody = {
+      searchRequestBody: {
+        query: query.trim(),
         sort: 'productName',
         limit: 12,
         offset: 0,
         filters: {
-          productLineName: 'magic',
-          categoryName: 'Sealed Products',
+          ProductLineName: ['Magic'],
+          CategoryName: ['Sealed Products'],
         },
       },
-    ];
-
-    const urls = [
-      `${SEARCH_URL}?mpfev=4215`,
-      SEARCH_URL,
-    ];
-
-    const tryFetch = async (body: any, url: string) => {
-      console.log('Request URL:', url);
-      console.log('Request body:', JSON.stringify(body));
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: baseHeaders,
-        body: JSON.stringify(body),
-      });
-      console.log('Response status:', res.status);
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('TCGplayer API non-OK', res.status, text);
-        return null as unknown as TCGSearchResult[];
-      }
-      const json = await res.json();
-      const arr = (json?.results ?? json?.data?.results ?? []) as any[];
-      return arr
-        .filter(Boolean)
-        .map((r) => ({ productId: Number(r.productId), productName: String(r.productName) }))
-        .filter((r) => Number.isFinite(r.productId) && r.productName);
     };
 
-    let results: TCGSearchResult[] = [];
+    const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
+    
+    console.log('Request body:', JSON.stringify(requestBody));
 
-    // Try all combinations of bodies and urls
-    outer: for (const body of bodies) {
-      for (const url of urls) {
-        const r = await tryFetch(body, url);
-        if (Array.isArray(r) && r.length) {
-          results = r;
-          break outer;
-        }
-      }
-    }
+    const response = await fetchWithRetry(SEARCH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Origin': 'https://www.tcgplayer.com',
+        'Referer': 'https://www.tcgplayer.com/search/magic/product',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-    if (!results.length) {
-      // Still no results, return an explicit error (real endpoint only; no fallback)
+    console.log('Final response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('TCGplayer API error:', response.status, errorText);
+      
+      // Return empty results instead of error for better UX
       return new Response(
-        JSON.stringify({ error: 'No results from TCGplayer search API' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 502 }
+        JSON.stringify({ 
+          results: [],
+          error: `TCGplayer API returned ${response.status}`,
+          message: 'Unable to fetch results from TCGplayer. Please try again later.'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       );
     }
+
+    const data = await response.json();
+    console.log('Response data keys:', Object.keys(data));
+    
+    const results = (data?.results || data?.data?.results || []) as TCGSearchResult[];
+    
+    console.log('Found results:', results.length);
+    results.forEach((r, i) => console.log(`${i + 1}:`, r.productName, `(ID: ${r.productId})`));
 
     return new Response(
       JSON.stringify({ results }),
@@ -166,8 +126,12 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('TCG search error:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', message: (error as Error).message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      JSON.stringify({ 
+        results: [],
+        error: 'Internal server error', 
+        message: 'Search temporarily unavailable. Please try again later.'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
   }
 });
