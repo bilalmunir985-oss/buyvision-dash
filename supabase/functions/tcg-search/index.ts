@@ -6,7 +6,7 @@ const cors = {
   'Content-Type': 'application/json'
 };
 
-const JSON_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
+const JSON_URL = 'https://www.tcgplayer.com/api/catalog/categories/1/search';
 
 function headers() {
   return {
@@ -50,23 +50,14 @@ async function tryJson(payload: any) {
     return []; 
   }
   
-  // Handle the response structure from the working API
-  if (json?.success && json?.results?.[0]?.aggregations?.products) {
-    const products = json.results[0].aggregations.products;
-    console.log('Found products:', products.length);
-    return products.map((it: any) => ({ 
-      productId: it.productId, 
-      productName: it.productName || it.name 
-    })).filter(r => r.productId && r.productName);
-  }
-  
-  // Fallback for other response formats
+  // Handle the new API response format
   const results = Array.isArray(json?.results) ? json.results : [];
   console.log('Found results:', results.length);
+  console.log('Fallback status:', json?.fallback);
   
   return results.map((it: any) => ({ 
     productId: it.productId, 
-    productName: it.productName || it.name 
+    productName: it.name || it.cleanName || it.productName 
   })).filter(r => r.productId && r.productName);
 }
 
@@ -146,44 +137,56 @@ Deno.serve(async (req: Request) => {
 
   console.log('Searching for:', query, setName ? `(set: ${setName})` : '');
 
-  // Simple payloads that match working undocumented API
+  // Correct payload format for TCGPlayer catalog API
   const variants = [
-    // v1: Simple structure
+    // v1: Search by product name
     {
-      algorithm: "",
-      from: 0,
-      size: 20,
-      filters: {
-        term: {
-          productLineName: "Magic"
+      sort: "name",
+      limit: 24,
+      offset: 0,
+      filters: [
+        {
+          name: "productName",
+          values: [query]
         }
-      },
-      listingSearch: {
-        context: {
-          cart: {}
-        }
-      },
+      ],
       context: {
-        cart: {}
-      },
-      sort: {},
-      q: query
+        shippingCountry: "US",
+        language: "en"
+      }
     },
     
-    // v2: Even simpler
-    {
-      q: query,
-      size: 20,
-      from: 0
-    },
+    // v2: Add set filter if provided
+    ...(setName ? [{
+      sort: "name",
+      limit: 24,
+      offset: 0,
+      filters: [
+        {
+          name: "productName",
+          values: [query]
+        },
+        {
+          name: "setName",
+          values: [setName]
+        }
+      ],
+      context: {
+        shippingCountry: "US",
+        language: "en"
+      }
+    }] : []),
     
-    // v3: Basic search with magic filter
+    // v3: Broader search without product name filter
     {
-      query: query,
-      filters: {
-        productLineName: "Magic"
-      },
-      size: 20
+      sort: "name",
+      limit: 24,
+      offset: 0,
+      filters: [],
+      context: {
+        shippingCountry: "US",
+        language: "en"
+      }
     }
   ];
 
