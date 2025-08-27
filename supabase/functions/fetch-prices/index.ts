@@ -25,7 +25,7 @@ async function sleep(ms: number) {
 
 async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | null> {
   try {
-    // Use the public listings endpoint with mpfev parameter (TCGPlayer frontend version flag)
+    // Use the correct TCGplayer listings endpoint per PRD
     const listingsUrl = `https://mp-search-api.tcgplayer.com/v1/product/${tcgplayerId}/listings?mpfev=4215`;
     
     console.log(`Fetching pricing for TCGplayer ID: ${tcgplayerId}`);
@@ -34,17 +34,10 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/plain, */*',
+        'Accept': 'application/json',
         'Origin': 'https://www.tcgplayer.com',
         'Referer': `https://www.tcgplayer.com/product/${tcgplayerId}`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-site',
       },
       body: JSON.stringify({
         filters: {
@@ -70,12 +63,7 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
     console.log(`API Response structure for product ${tcgplayerId}:`, {
       hasResults: !!data.results,
       resultsLength: data.results?.length || 0,
-      keys: Object.keys(data),
-      sampleResult: data.results?.[0] ? {
-        hasPrice: typeof data.results[0].price !== 'undefined',
-        hasQuantity: typeof data.results[0].quantity !== 'undefined',
-        hasShipping: typeof data.results[0].shipping !== 'undefined'
-      } : null
+      keys: Object.keys(data)
     });
 
     const listings: TCGListing[] = data.results || [];
@@ -115,11 +103,11 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
     // Calculate lowest total price (item + shipping)
     const lowestTotalPrice = Math.min(...validListings.map(l => l.price + (l.shipping || 0)));
 
-    // Calculate lowest item price for listings with 10+ quantity
+    // Calculate lowest item price for listings with 10+ quantity (per PRD)
     const highQuantityListings = validListings.filter(l => l.quantity >= 10);
     const lowestItemPrice = highQuantityListings.length > 0 
       ? Math.min(...highQuantityListings.map(l => l.price))
-      : (validListings.length > 0 ? Math.min(...validListings.map(l => l.price)) : null);
+      : null;
 
     const totalQuantity = validListings.reduce((sum, l) => sum + l.quantity, 0);
 
@@ -135,7 +123,6 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
     return result;
   } catch (error) {
     console.error(`Error fetching pricing for product ${tcgplayerId}:`, error);
-    console.error(`Error details:`, error.message, error.stack);
     return null;
   }
 }

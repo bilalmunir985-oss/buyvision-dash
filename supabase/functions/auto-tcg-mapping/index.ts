@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const CATALOG_URL = 'https://www.tcgplayer.com/api/catalog/categories/1/search';
+const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
 
 function tcgHeaders() {
   return {
@@ -18,56 +18,47 @@ function tcgHeaders() {
 }
 
 async function searchTCGProduct(productName: string, setName?: string) {
-  const filters: Array<{ name: string; values: string[] }> = [];
+  // Build search query - include set name if provided for better matching
+  const searchQuery = setName ? `${productName} ${setName}` : productName;
   
-  if (productName && productName.trim()) {
-    filters.push({
-      name: "productName",
-      values: [productName.trim()]
-    });
-  }
-
-  if (setName && setName.trim()) {
-    filters.push({
-      name: "setName", 
-      values: [setName.trim()]
-    });
-  }
-
   const payload = {
-    sort: "name",
-    limit: 5,
-    offset: 0,
-    filters,
-    context: {
-      shippingCountry: "US",
-      language: "en"
-    }
+    sort: "productName",
+    limit: 10,
+    filters: {
+      productLineName: "magic",
+      categoryName: "Sealed Products"
+    },
+    query: searchQuery
   };
 
   console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
+  console.log('Payload:', JSON.stringify(payload, null, 2));
   
-  const response = await fetch(CATALOG_URL, { 
+  const response = await fetch(SEARCH_URL, { 
     method: 'POST', 
     headers: tcgHeaders(), 
     body: JSON.stringify(payload) 
   });
   
+  console.log('Response status:', response.status);
+  
   if (!response.ok) {
-    console.error(`Search failed: ${response.status}`);
+    console.error(`Search failed: ${response.status} - ${await response.text()}`);
     return [];
   }
   
   const json = await response.json();
+  console.log('Response keys:', Object.keys(json));
+  console.log('Results found:', json.results?.length || 0);
   
-  if (json.fallback || !Array.isArray(json.results)) {
-    console.log('API returned fallback or no results');
+  if (!Array.isArray(json.results)) {
+    console.log('No results array found in response');
     return [];
   }
   
   return json.results.map((item: any) => ({ 
     productId: item.productId, 
-    productName: item.name || item.cleanName
+    productName: item.productName
   })).filter((r: any) => r.productId && r.productName);
 }
 

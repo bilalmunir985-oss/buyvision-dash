@@ -6,7 +6,7 @@ const cors = {
   'Content-Type': 'application/json'
 };
 
-const CATALOG_URL = 'https://www.tcgplayer.com/api/catalog/categories/1/search';
+const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
 
 function headers() {
   return {
@@ -19,39 +19,23 @@ function headers() {
 }
 
 async function searchTCG(query: string, setName?: string) {
-  const filters: Array<{ name: string; values: string[] }> = [];
+  // Build search query - include set name if provided
+  const searchQuery = setName ? `${query} ${setName}` : query;
   
-  // Always add product name filter
-  if (query && query.trim()) {
-    filters.push({
-      name: "productName",
-      values: [query.trim()]
-    });
-  }
-
-  // Add set filter if provided
-  if (setName && setName.trim()) {
-    filters.push({
-      name: "setName", 
-      values: [setName.trim()]
-    });
-  }
-
   const payload = {
-    sort: "name",
-    limit: 24,
-    offset: 0,
-    filters,
-    context: {
-      shippingCountry: "US",
-      language: "en"
-    }
+    sort: "productName",
+    limit: 10,
+    filters: {
+      productLineName: "magic",
+      categoryName: "Sealed Products"
+    },
+    query: searchQuery
   };
 
-  console.log('Searching TCGplayer for:', query, setName ? `(Set: ${setName})` : '');
+  console.log('Searching TCGplayer for:', searchQuery);
   console.log('Payload:', JSON.stringify(payload, null, 2));
   
-  const response = await fetch(CATALOG_URL, { 
+  const response = await fetch(SEARCH_URL, { 
     method: 'POST', 
     headers: headers(), 
     body: JSON.stringify(payload) 
@@ -73,18 +57,17 @@ async function searchTCG(query: string, setName?: string) {
   }
   
   console.log('Response data keys:', Object.keys(json));
-  console.log('Total results:', json.totalResults);
-  console.log('Fallback:', json.fallback);
+  console.log('Results length:', json.results?.length || 0);
   
   const results = Array.isArray(json?.results) ? json.results : [];
   console.log('Found', results.length, 'results');
   
   const mappedResults = results.map((item: any) => ({ 
     productId: item.productId, 
-    productName: item.name || item.cleanName
+    productName: item.productName
   })).filter(r => r.productId && r.productName);
   
-  console.log('Returning', mappedResults.length, 'real results');
+  console.log('Returning', mappedResults.length, 'valid results');
   return mappedResults;
 }
 
