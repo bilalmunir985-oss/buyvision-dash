@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
         const htmlRes = await fetch(url, { headers: { ...baseHeaders, 'Content-Type': 'text/html' } });
         if (htmlRes.ok) {
           const html = await htmlRes.text();
-          const matches = Array.from(html.matchAll(/href=\"\\/product\\\/(\d+)[^\"]*\"[^>]*>(.*?)<\\/a>/gi));
+          const matches = Array.from(html.matchAll(/href="\/product\/(\d+)[^"]*"[^>]*>(.*?)<\/a>/gi));
           const seen = new Set<number>();
           const parsed: TCGSearchResult[] = [];
           for (const m of matches) {
