@@ -84,68 +84,29 @@ async function tryHtml(query: string) {
   const html = await r.text();
   console.log('HTML length received:', html.length);
   
-  // Multiple regex patterns to try different HTML structures
-  const patterns = [
-    // Pattern 1: Standard product links
-    /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g,
-    // Pattern 2: Data attributes
-    /data-productid="(\d+)"[^>]*>[^<]*<[^>]*>([^<]+)/g,
-    // Pattern 3: Product cards with IDs
-    /<a[^>]+href="[^"]*\/product\/(\d+)[^"]*"[^>]*>[^<]*<[^>]*class="[^"]*product[^"]*"[^>]*>([^<]+)/g,
-    // Pattern 4: Alternative structure
-    /<div[^>]+data-productid="(\d+)"[^>]*>[\s\S]*?<[^>]*>([^<]*(?:booster|bundle|box|deck|case)[^<]*)<\/[^>]*>/gi
-  ];
+  // Simple extraction of product IDs - don't over-validate
+  const productIds = [...html.matchAll(/\/product\/(\d+)/g)].map(m => parseInt(m[1]));
+  console.log('Product IDs found:', productIds.slice(0, 10)); // Log first 10
   
+  // Try to get product names from data attributes or titles
   const results: Array<{productId: number, productName: string}> = [];
   
-  for (const pattern of patterns) {
-    console.log('Trying pattern:', pattern.source);
-    let match;
-    const patternResults: Array<{productId: number, productName: string}> = [];
+  for (const productId of productIds.slice(0, 10)) {
+    // Try to find the product name near this ID
+    const nameRegex = new RegExp(`data-product-name="([^"]+)"|title="([^"]+)"|>([^<]*(?:booster|bundle|box|deck|case|collector)[^<]*)<`, 'gi');
+    const nameMatch = nameRegex.exec(html);
     
-    while ((match = pattern.exec(html)) !== null && patternResults.length < 10) {
-      const productId = parseInt(match[1]);
-      const productName = match[2].trim().replace(/\s+/g, ' ');
-      
-      console.log('Found potential match:', { productId, productName });
-      
-      // Filter for sealed products - be more permissive
-      if (productName && (
-          productName.toLowerCase().includes('booster') || 
-          productName.toLowerCase().includes('bundle') || 
-          productName.toLowerCase().includes('box') ||
-          productName.toLowerCase().includes('deck') ||
-          productName.toLowerCase().includes('case') ||
-          productName.toLowerCase().includes('collector') ||
-          productName.toLowerCase().includes('draft') ||
-          productName.toLowerCase().includes('set booster')
-        )) {
-        patternResults.push({
-          productId,
-          productName
-        });
-      }
+    let productName = `TCG Product #${productId}`; // Fallback name
+    
+    if (nameMatch) {
+      productName = nameMatch[1] || nameMatch[2] || nameMatch[3] || productName;
+      productName = productName.trim();
     }
     
-    if (patternResults.length > 0) {
-      console.log(`Pattern found ${patternResults.length} results`);
-      results.push(...patternResults);
-      break; // Use first successful pattern
-    }
-  }
-  
-  // If no patterns work, log some HTML content for debugging
-  if (results.length === 0) {
-    console.log('No matches found. HTML sample:', html.substring(0, 1000));
-    
-    // Try a very broad search to see if there are any product IDs at all
-    const broadPattern = /(\d{6,})/g;
-    const potentialIds = [];
-    let broadMatch;
-    while ((broadMatch = broadPattern.exec(html)) !== null && potentialIds.length < 5) {
-      potentialIds.push(broadMatch[1]);
-    }
-    console.log('Potential product IDs found:', potentialIds);
+    results.push({
+      productId,
+      productName
+    });
   }
   
   console.log('HTML results found:', results.length);
@@ -159,43 +120,48 @@ Deno.serve(async (req: Request) => {
   let body: any = {};
   try { body = await req.json(); } catch {}
   const query = (body?.query ?? '').toString().trim();
+  const setName = (body?.setName ?? '').toString().trim();
   if (!query) return new Response(JSON.stringify({ error: 'missing_query' }), { status: 400, headers: cors });
 
-  console.log('Searching for:', query);
+  console.log('Searching for:', query, setName ? `(set: ${setName})` : '');
 
-  // Try correct TCGplayer API payload formats
+  // Correct JSON payload formats - only array-style filters
   const variants = [
-    // v1: Current working format (array of name/values objects)
+    // v1: Current working format
     {
-      sort: 'productName',
-      limit: 10,
-      offset: 0,
+      from: 0,
+      size: 12,
+      sort: "productName",
       filters: [
-        { name: 'productLineName', values: ['magic'] },
-        { name: 'categoryName', values: ['Sealed Products'] }
+        { name: "productLineName", values: ["magic"] },
+        { name: "productTypeName", values: ["Sealed Products"] },
+        ...(setName ? [{ name: "setName", values: [setName] }] : [])
       ],
-      context: {
-        shippingCountry: 'US',
-        language: 'en'
+      search: {
+        kind: "string",
+        query
       },
-      search: query
+      context: {
+        shippingCountry: "US",
+        language: "en"
+      }
     },
-    // v2: Alternative with query field
+    // v2: Alternative array format
     {
-      sort: 'productName',
+      sort: "productName",
       limit: 10,
       offset: 0,
       filters: [
-        { name: 'productLineName', values: ['magic'] },
-        { name: 'categoryName', values: ['Sealed Products'] }
+        { name: "productLineName", values: ["magic"] },
+        { name: "categoryName", values: ["Sealed Products"] }
       ],
       query
     },
-    // v3: Minimal working format
+    // v3: Minimal array format
     {
       limit: 10,
       filters: [
-        { name: 'productLineName', values: ['magic'] }
+        { name: "productLineName", values: ["magic"] }
       ],
       search: query
     }
@@ -209,10 +175,10 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ results: items }), { headers: cors });
     }
     // Brief pause between attempts
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 500));
   }
 
-  // Try HTML fallback only if JSON completely fails
+  // Try HTML fallback
   const htmlItems = await tryHtml(query);
   if (htmlItems.length > 0) {
     console.log(`HTML fallback success with ${htmlItems.length} results`);
