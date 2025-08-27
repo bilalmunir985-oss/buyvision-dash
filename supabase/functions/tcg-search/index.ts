@@ -6,57 +6,83 @@ const cors = {
   'Content-Type': 'application/json'
 };
 
-const JSON_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
+const CATALOG_URL = 'https://www.tcgplayer.com/api/catalog/categories/1/search';
 
 function headers() {
   return {
-    'content-type': 'application/json',
-    'origin': 'https://www.tcgplayer.com',
-    'referer': 'https://www.tcgplayer.com/',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'accept': 'application/json, text/plain, */*',
-    'accept-language': 'en-US,en;q=0.9',
-    'accept-encoding': 'gzip, deflate, br',
-    'dnt': '1',
-    'connection': 'keep-alive',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-site'
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Origin': 'https://www.tcgplayer.com',
+    'Referer': 'https://www.tcgplayer.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   };
 }
 
-async function tryJson(payload: any) {
-  console.log('Trying payload:', JSON.stringify(payload));
+async function searchTCG(query: string, setName?: string) {
+  const filters = [
+    {
+      name: "productName",
+      values: [query]
+    }
+  ];
+
+  // Add set filter if provided
+  if (setName && setName.trim()) {
+    filters.push({
+      name: "setName", 
+      values: [setName.trim()]
+    });
+  }
+
+  const payload = {
+    sort: "name",
+    limit: 10,
+    offset: 0,
+    filters,
+    context: {
+      shippingCountry: "US",
+      language: "en"
+    }
+  };
+
+  console.log('Searching TCGplayer for:', query, setName ? `(Set: ${setName})` : '');
+  console.log('Payload:', JSON.stringify(payload, null, 2));
   
-  const r = await fetch(JSON_URL, { 
+  const response = await fetch(CATALOG_URL, { 
     method: 'POST', 
     headers: headers(), 
     body: JSON.stringify(payload) 
   });
   
-  const text = await r.text();
-  console.log('Response status:', r.status);
+  console.log('Response status:', response.status);
   
-  if (!r.ok) {
-    console.log('TCG JSON search fail', r.status, text.slice(0, 500));
+  if (!response.ok) {
+    console.log('TCG search failed:', response.status, await response.text());
     return [];
   }
   
   let json: any;
   try { 
-    json = JSON.parse(text); 
+    json = await response.json(); 
   } catch (e) { 
-    console.log('non-JSON body:', text.slice(0, 200)); 
+    console.log('Failed to parse JSON response:', e); 
     return []; 
   }
   
-  const results = Array.isArray(json?.results) ? json.results : [];
-  console.log('Found results:', results.length);
+  console.log('Response data keys:', Object.keys(json));
+  console.log('Total results:', json.totalResults);
+  console.log('Fallback:', json.fallback);
   
-  return results.map((it: any) => ({ 
-    productId: it.productId, 
-    productName: it.productName || it.name 
+  const results = Array.isArray(json?.results) ? json.results : [];
+  console.log('Found', results.length, 'results');
+  
+  const mappedResults = results.map((item: any) => ({ 
+    productId: item.productId, 
+    productName: item.name || item.cleanName
   })).filter(r => r.productId && r.productName);
+  
+  console.log('Returning', mappedResults.length, 'real results');
+  return mappedResults;
 }
 
 async function tryHtml(query: string) {
@@ -118,43 +144,19 @@ Deno.serve(async (req: Request) => {
   const query = (body?.query ?? '').toString().trim();
   if (!query) return new Response(JSON.stringify({ error: 'missing_query' }), { status: 400, headers: cors });
 
-  console.log('Searching for:', query);
+  const setName = body?.setName || body?.set_code;
+  
+  console.log('Searching for:', query, setName ? `(Set: ${setName})` : '');
 
-  // Try only working payload formats
-  const variants = [
-    // Simple object-based filters (this format works)
-    { 
-      sort: 'productName', 
-      limit: 10, 
-      filters: { 
-        productLineName: 'magic',
-        categoryName: 'Sealed Products'
-      }, 
-      query 
-    },
-    // Alternative category filter
-    { 
-      sort: 'productName', 
-      limit: 10, 
-      filters: { 
-        productLineName: 'magic'
-      }, 
-      query 
-    }
-  ];
-
-  // Try JSON variants first
-  for (const payload of variants) {
-    const items = await tryJson(payload);
-    if (items.length > 0) {
-      console.log(`Success with ${items.length} results`);
-      return new Response(JSON.stringify({ results: items }), { headers: cors });
-    }
-    // Brief pause between attempts
-    await new Promise(r => setTimeout(r, 300));
+  // Use the new TCGplayer catalog search
+  const results = await searchTCG(query, setName);
+  
+  if (results.length > 0) {
+    console.log(`Success with ${results.length} results`);
+    return new Response(JSON.stringify({ results }), { headers: cors });
   }
 
-  // Try HTML fallback only if JSON completely fails
+  // Try HTML fallback only if catalog search completely fails
   const htmlItems = await tryHtml(query);
   if (htmlItems.length > 0) {
     console.log(`HTML fallback success with ${htmlItems.length} results`);
