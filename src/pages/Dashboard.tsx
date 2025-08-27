@@ -636,7 +636,7 @@ export default function Dashboard() {
                 ) : (
                   <TrendingUp className="h-4 w-4" />
                 )}
-                {isFetchingPrices ? 'Fetching...' : 'Fetch Live Prices'}
+                {isFetchingPrices ? 'Fetching...' : 'Fetch Prices'}
               </Button>
               <Button
                 variant="outline"
@@ -645,7 +645,7 @@ export default function Dashboard() {
                 className="flex items-center gap-2"
               >
                 <DollarSign className="h-4 w-4" />
-                Refresh Data
+                Refresh
               </Button>
             </div>
           </div>

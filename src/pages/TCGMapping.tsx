@@ -38,11 +38,9 @@ export default function TCGMapping() {
         .select('id, name, set_code, type')
         .eq('tcg_is_verified', false)
         .eq('active', true)
-        .order('name')
-        .limit(50); // Limit to first 50 for better performance
+        .order('name');
 
       if (error) throw error;
-      console.log('Fetched products:', data?.length);
       setUnverifiedProducts(data || []);
     } catch (error) {
       console.error('Error:', error);
@@ -55,19 +53,14 @@ export default function TCGMapping() {
     }
   };
 
-  const handleFindMatches = async (
-    productId: string,
-    productName: string,
-    setCode?: string | null,
-    productType?: string
-  ) => {
+  const handleFindMatches = async (productId: string, productName: string) => {
     setSelectedProduct(productId);
     setSearching(true);
     setSearchResults([]);
 
     try {
       const response = await supabase.functions.invoke('tcg-search', {
-        body: { query: productName, setCode, type: productType }
+        body: { query: productName }
       });
 
       if (response.error) throw response.error;
@@ -143,33 +136,27 @@ export default function TCGMapping() {
             <CardTitle>Unverified Products ({unverifiedProducts.length})</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {unverifiedProducts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {loading ? 'Loading products...' : 'No unverified products found'}
-              </div>
-            ) : (
-              unverifiedProducts.map((product) => (
-                <div key={product.id} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-semibold">{product.name}</h3>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="secondary">{product.set_code}</Badge>
-                        <Badge variant="outline">{product.type}</Badge>
-                      </div>
+            {unverifiedProducts.map((product) => (
+              <div key={product.id} className="border rounded-lg p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="font-semibold">{product.name}</h3>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="secondary">{product.set_code}</Badge>
+                      <Badge variant="outline">{product.type}</Badge>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handleFindMatches(product.id, product.name, product.set_code, product.type)}
-                    disabled={searching}
-                  >
-                    <Search className="h-4 w-4 mr-2" />
-                    Find Matches
-                  </Button>
                 </div>
-              ))
-            )}
+                <Button
+                  size="sm"
+                  onClick={() => handleFindMatches(product.id, product.name)}
+                  disabled={searching}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Find Matches
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
 

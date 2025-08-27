@@ -193,10 +193,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      import_mtgjson_products: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
