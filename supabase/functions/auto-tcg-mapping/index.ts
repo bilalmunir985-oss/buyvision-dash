@@ -9,57 +9,87 @@ const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
 
 function tcgHeaders() {
   return {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Origin': 'https://www.tcgplayer.com',
-    'Referer': 'https://www.tcgplayer.com/',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'content-type': 'application/json',
+    'origin': 'https://www.tcgplayer.com',
+    'referer': 'https://www.tcgplayer.com/',
+    'user-agent': 'Mozilla/5.0',
+    'accept': 'application/json, text/plain, */*',
+    'accept-language': 'en-US,en;q=0.9',
   };
 }
 
+async function tryVariant(body: any) {
+  try {
+    const response = await fetch(SEARCH_URL, {
+      method: 'POST',
+      headers: tcgHeaders(),
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      console.log(`Variant failed with status: ${response.status}`);
+      return null;
+    }
+    
+    const text = await response.text();
+    const json = JSON.parse(text);
+    return Array.isArray(json?.results) ? json.results : [];
+  } catch (error) {
+    console.error('Variant request failed:', error);
+    return null;
+  }
+}
+
 async function searchTCGProduct(productName: string, setName?: string) {
-  // Build search query - include set name if provided for better matching
-  const searchQuery = setName ? `${productName} ${setName}` : productName;
-  
-  const payload = {
+  console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
+
+  // Variant A (flat filters) - per your documentation  
+  const variantA = {
     sort: "productName",
     limit: 10,
     filters: {
       productLineName: "magic",
-      categoryName: "Sealed Products"
+      productTypeName: "Sealed Products",
+      ...(setName ? { setName } : {}),
     },
-    query: searchQuery
+    query: productName,
   };
 
-  console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
-  console.log('Payload:', JSON.stringify(payload, null, 2));
-  
-  const response = await fetch(SEARCH_URL, { 
-    method: 'POST', 
-    headers: tcgHeaders(), 
-    body: JSON.stringify(payload) 
-  });
-  
-  console.log('Response status:', response.status);
-  
-  if (!response.ok) {
-    console.error(`Search failed: ${response.status} - ${await response.text()}`);
-    return [];
+  // Variant B (ES-style filters + search) - per your documentation
+  const variantB = {
+    from: 0,
+    size: 10,
+    sort: "productName",
+    filters: [
+      { type: "term", name: "productLineName", values: ["magic"] },
+      { type: "term", name: "productTypeName", values: ["Sealed Products"] },
+      ...(setName ? [{ type: "term", name: "setName", values: [setName] }] : []),
+    ],
+    search: { kind: "string", query: productName },
+    context: { shippingCountry: "US" },
+  };
+
+  // Try A → B → give up
+  const resultA = await tryVariant(variantA);
+  if (resultA && resultA.length > 0) {
+    console.log(`Variant A success: ${resultA.length} results`);
+    return resultA.map((item: any) => ({
+      productId: item.productId,
+      productName: item.productName
+    })).filter((r: any) => r.productId && r.productName);
   }
-  
-  const json = await response.json();
-  console.log('Response keys:', Object.keys(json));
-  console.log('Results found:', json.results?.length || 0);
-  
-  if (!Array.isArray(json.results)) {
-    console.log('No results array found in response');
-    return [];
+
+  const resultB = await tryVariant(variantB);
+  if (resultB && resultB.length > 0) {
+    console.log(`Variant B success: ${resultB.length} results`);
+    return resultB.map((item: any) => ({
+      productId: item.productId,
+      productName: item.productName
+    })).filter((r: any) => r.productId && r.productName);
   }
-  
-  return json.results.map((item: any) => ({ 
-    productId: item.productId, 
-    productName: item.productName
-  })).filter((r: any) => r.productId && r.productName);
+
+  console.log('No results found from any variant');
+  return [];
 }
 
 async function sleep(ms: number) {

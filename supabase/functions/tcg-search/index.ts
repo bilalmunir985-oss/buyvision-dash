@@ -8,67 +8,122 @@ const cors = {
 
 const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
 
-function headers() {
+function tcgHeaders() {
   return {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Origin': 'https://www.tcgplayer.com',
-    'Referer': 'https://www.tcgplayer.com/',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'content-type': 'application/json',
+    'origin': 'https://www.tcgplayer.com',
+    'referer': 'https://www.tcgplayer.com/',
+    'user-agent': 'Mozilla/5.0',
+    'accept': 'application/json, text/plain, */*',
+    'accept-language': 'en-US,en;q=0.9',
   };
 }
 
+async function tryVariant(body: any) {
+  try {
+    const response = await fetch(SEARCH_URL, {
+      method: 'POST',
+      headers: tcgHeaders(),
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      console.log(`Variant failed with status: ${response.status}`);
+      return null;
+    }
+    
+    const text = await response.text();
+    const json = JSON.parse(text);
+    return Array.isArray(json?.results) ? json.results : [];
+  } catch (error) {
+    console.error('Variant request failed:', error);
+    return null;
+  }
+}
+
 async function searchTCG(query: string, setName?: string) {
-  // Build search query - include set name if provided
-  const searchQuery = setName ? `${query} ${setName}` : query;
-  
-  const payload = {
+  console.log(`Searching TCGplayer for: ${query} (Set: ${setName || 'N/A'})`);
+
+  // Variant A (flat filters) - per your documentation  
+  const variantA = {
     sort: "productName",
-    limit: 10,
+    limit: 12,
     filters: {
       productLineName: "magic",
-      categoryName: "Sealed Products"
+      productTypeName: "Sealed Products",
+      ...(setName ? { setName } : {}),
     },
-    query: searchQuery
+    query,
   };
 
-  console.log('Searching TCGplayer for:', searchQuery);
-  console.log('Payload:', JSON.stringify(payload, null, 2));
+  // Variant B (ES-style filters + search) - per your documentation
+  const variantB = {
+    from: 0,
+    size: 12,
+    sort: "productName",
+    filters: [
+      { type: "term", name: "productLineName", values: ["magic"] },
+      { type: "term", name: "productTypeName", values: ["Sealed Products"] },
+      ...(setName ? [{ type: "term", name: "setName", values: [setName] }] : []),
+    ],
+    search: { kind: "string", query },
+    context: { shippingCountry: "US" },
+  };
+
+  console.log('Trying Variant A:', JSON.stringify(variantA, null, 2));
+
+  // Try A → B → fallback (HTML scrape)
+  const resultA = await tryVariant(variantA);
+  if (resultA && resultA.length > 0) {
+    console.log(`Variant A success: ${resultA.length} results`);
+    return resultA.map((item: any) => ({
+      productId: item.productId,
+      productName: item.productName
+    })).filter((r: any) => r.productId && r.productName);
+  }
+
+  console.log('Trying Variant B:', JSON.stringify(variantB, null, 2));
+  const resultB = await tryVariant(variantB);
+  if (resultB && resultB.length > 0) {
+    console.log(`Variant B success: ${resultB.length} results`);
+    return resultB.map((item: any) => ({
+      productId: item.productId,
+      productName: item.productName
+    })).filter((r: any) => r.productId && r.productName);
+  }
+
+  console.log('Trying HTML fallback for:', query);
+  // Tiny HTML fallback: extract /product/{id} from search page
+  const url = `https://www.tcgplayer.com/search/magic/product?productLineName=magic&productTypeName=Sealed%20Products&q=${encodeURIComponent(query)}`;
   
-  const response = await fetch(SEARCH_URL, { 
-    method: 'POST', 
-    headers: headers(), 
-    body: JSON.stringify(payload) 
-  });
-  
-  console.log('Response status:', response.status);
-  
-  if (!response.ok) {
-    console.log('TCG search failed:', response.status, await response.text());
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'user-agent': 'Mozilla/5.0',
+        'referer': 'https://www.tcgplayer.com/',
+        'accept': 'text/html',
+      },
+    });
+
+    if (!response.ok) {
+      console.log('HTML fallback failed:', response.status);
+      return [];
+    }
+
+    const html = await response.text();
+    const productRegex = /\/product\/(\d+)[^"'<>]*/g;
+    const ids = [...html.matchAll(productRegex)].map((m) => m[1]);
+    const unique = [...new Set(ids)].slice(0, 10).map((id) => ({
+      productId: Number(id),
+      productName: `TCG #${id}`,
+    }));
+
+    console.log('HTML fallback results:', unique.length);
+    return unique;
+  } catch (error) {
+    console.error('HTML fallback error:', error);
     return [];
   }
-  
-  let json: any;
-  try { 
-    json = await response.json(); 
-  } catch (e) { 
-    console.log('Failed to parse JSON response:', e); 
-    return []; 
-  }
-  
-  console.log('Response data keys:', Object.keys(json));
-  console.log('Results length:', json.results?.length || 0);
-  
-  const results = Array.isArray(json?.results) ? json.results : [];
-  console.log('Found', results.length, 'results');
-  
-  const mappedResults = results.map((item: any) => ({ 
-    productId: item.productId, 
-    productName: item.productName
-  })).filter(r => r.productId && r.productName);
-  
-  console.log('Returning', mappedResults.length, 'valid results');
-  return mappedResults;
 }
 
 async function tryHtml(query: string) {
