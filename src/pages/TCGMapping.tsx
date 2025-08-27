@@ -59,12 +59,8 @@ export default function TCGMapping() {
     setSearchResults([]);
 
     try {
-      const product = unverifiedProducts.find(p => p.id === productId);
       const response = await supabase.functions.invoke('tcg-search', {
-        body: { 
-          query: productName,
-          setName: product?.set_code // Pass set code to improve matching
-        }
+        body: { query: productName }
       });
 
       if (response.error) throw response.error;
