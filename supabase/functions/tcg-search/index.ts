@@ -19,12 +19,15 @@ function headers() {
 }
 
 async function searchTCG(query: string, setName?: string) {
-  const filters = [
-    {
+  const filters: Array<{ name: string; values: string[] }> = [];
+  
+  // Always add product name filter
+  if (query && query.trim()) {
+    filters.push({
       name: "productName",
-      values: [query]
-    }
-  ];
+      values: [query.trim()]
+    });
+  }
 
   // Add set filter if provided
   if (setName && setName.trim()) {
@@ -36,7 +39,7 @@ async function searchTCG(query: string, setName?: string) {
 
   const payload = {
     sort: "name",
-    limit: 10,
+    limit: 24,
     offset: 0,
     filters,
     context: {

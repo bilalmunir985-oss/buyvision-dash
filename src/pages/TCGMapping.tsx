@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Search, Check, ExternalLink } from 'lucide-react';
+import { Loader2, Search, Check, ExternalLink, Play, DollarSign } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -24,6 +24,8 @@ export default function TCGMapping() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [autoMapping, setAutoMapping] = useState(false);
+  const [fetchingPrices, setFetchingPrices] = useState(false);
   const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
   const { toast } = useToast();
 
@@ -117,6 +119,57 @@ export default function TCGMapping() {
     }
   };
 
+  const handleAutoMapping = async () => {
+    setAutoMapping(true);
+    try {
+      const response = await supabase.functions.invoke('auto-tcg-mapping', {
+        body: { limit: 20 }
+      });
+
+      if (response.error) throw response.error;
+
+      const result = response.data;
+      toast({
+        title: "Auto Mapping Complete",
+        description: `Mapped ${result.mapped} of ${result.processed} products`,
+      });
+
+      // Refresh the list
+      fetchUnverifiedProducts();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Auto mapping failed",
+        variant: "destructive",
+      });
+    } finally {
+      setAutoMapping(false);
+    }
+  };
+
+  const handleFetchPrices = async () => {
+    setFetchingPrices(true);
+    try {
+      const response = await supabase.functions.invoke('fetch-prices');
+
+      if (response.error) throw response.error;
+
+      const result = response.data;
+      toast({
+        title: "Price Fetch Complete",
+        description: `Updated prices for ${result.processed} products`,
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Price fetch failed",
+        variant: "destructive",
+      });
+    } finally {
+      setFetchingPrices(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -127,11 +180,49 @@ export default function TCGMapping() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">TCGplayer Mapping</h1>
-        <p className="text-muted-foreground">
-          Find and verify TCGplayer product matches
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold">TCGplayer Mapping</h1>
+          <p className="text-muted-foreground">
+            Find and verify TCGplayer product matches
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Button 
+            onClick={handleAutoMapping}
+            disabled={autoMapping || unverifiedProducts.length === 0}
+            variant="default"
+          >
+            {autoMapping ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Auto Mapping...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Auto Map 20 Products
+              </>
+            )}
+          </Button>
+          <Button 
+            onClick={handleFetchPrices}
+            disabled={fetchingPrices}
+            variant="outline"
+          >
+            {fetchingPrices ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Fetching...
+              </>
+            ) : (
+              <>
+                <DollarSign className="h-4 w-4 mr-2" />
+                Import Prices
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
