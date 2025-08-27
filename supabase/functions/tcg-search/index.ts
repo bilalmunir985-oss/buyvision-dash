@@ -110,10 +110,23 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
       } else {
-        console.error('TCGplayer API error:', response.status, await response.text());
+        // Don't try to parse as JSON if response failed
+        const text = await response.text();
+        console.error('TCGplayer API error:', response.status, text.slice(0, 500));
+        
+        // Return empty results instead of crashing
+        return new Response(
+          JSON.stringify({ results: [], error: 'upstream_error', status: response.status }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
       }
     } catch (e) {
       console.error('Request failed:', e);
+      // Return empty results instead of crashing  
+      return new Response(
+        JSON.stringify({ results: [], error: 'request_failed' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
     }
 
     // If we get here, return empty results
