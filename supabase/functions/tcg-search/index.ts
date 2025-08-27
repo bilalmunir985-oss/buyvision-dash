@@ -50,6 +50,17 @@ async function tryJson(payload: any) {
     return []; 
   }
   
+  // Handle the response structure from the working API
+  if (json?.success && json?.results?.[0]?.aggregations?.products) {
+    const products = json.results[0].aggregations.products;
+    console.log('Found products:', products.length);
+    return products.map((it: any) => ({ 
+      productId: it.productId, 
+      productName: it.productName || it.name 
+    })).filter(r => r.productId && r.productName);
+  }
+  
+  // Fallback for other response formats
   const results = Array.isArray(json?.results) ? json.results : [];
   console.log('Found results:', results.length);
   
@@ -135,56 +146,44 @@ Deno.serve(async (req: Request) => {
 
   console.log('Searching for:', query, setName ? `(set: ${setName})` : '');
 
-  // ONLY array-of-objects filter format (no object-style filters)
+  // Simple payloads that match working undocumented API
   const variants = [
-    // v1: Full format with sealed products filter
+    // v1: Simple structure
     {
+      algorithm: "",
       from: 0,
-      size: 12,
-      sort: 'productName',
-      filters: [
-        { name: 'productLineName', values: ['magic'] },
-        { name: 'categoryName', values: ['Sealed Products'] },
-        ...(setName ? [{ name: 'setName', values: [setName] }] : [])
-      ],
-      search: {
-        kind: 'string',
-        query
+      size: 20,
+      filters: {
+        term: {
+          productLineName: "Magic"
+        }
+      },
+      listingSearch: {
+        context: {
+          cart: {}
+        }
       },
       context: {
-        shippingCountry: 'US',
-        language: 'en'
-      }
-    },
-    
-    // v2: Minimal format with just magic filter
-    {
-      from: 0,
-      size: 12,
-      sort: 'productName',
-      filters: [
-        { name: 'productLineName', values: ['magic'] }
-      ],
-      search: {
-        kind: 'string',
-        query
+        cart: {}
       },
-      context: {
-        shippingCountry: 'US',
-        language: 'en'
-      }
+      sort: {},
+      q: query
     },
     
-    // v3: Alternative structure without context
+    // v2: Even simpler
     {
-      sort: 'productName',
-      limit: 10,
-      offset: 0,
-      filters: [
-        { name: 'productLineName', values: ['magic'] },
-        { name: 'categoryName', values: ['Sealed Products'] }
-      ],
-      query
+      q: query,
+      size: 20,
+      from: 0
+    },
+    
+    // v3: Basic search with magic filter
+    {
+      query: query,
+      filters: {
+        productLineName: "Magic"
+      },
+      size: 20
     }
   ];
 
