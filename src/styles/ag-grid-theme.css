@@ -15,6 +15,7 @@
   --ag-cell-horizontal-padding: 12px;
   --ag-header-height: 40px;
   --ag-row-height: 48px;
+  border-radius: 0.75rem;
 }
 
 .ag-theme-alpine .ag-header {
@@ -34,6 +35,7 @@
 
 .ag-theme-alpine .ag-row {
   border-bottom: 1px solid hsl(var(--border) / 0.3);
+  transition: background-color 0.2s ease-in-out;
 }
 
 .ag-theme-alpine .ag-row:hover {
@@ -42,6 +44,44 @@
 
 .ag-theme-alpine .ag-cell-focus {
   border: 2px solid hsl(var(--ring));
+}
+
+/* Profit margin row styling */
+.ag-theme-alpine .ag-row-profit-high {
+  background-color: hsl(var(--success) / 0.05);
+  border-left: 3px solid hsl(var(--success));
+}
+
+.ag-theme-alpine .ag-row-profit-medium {
+  background-color: hsl(var(--warning) / 0.05);
+  border-left: 3px solid hsl(var(--warning));
+}
+
+.ag-theme-alpine .ag-row-profit-low {
+  background-color: hsl(var(--destructive) / 0.05);
+  border-left: 3px solid hsl(var(--destructive));
+}
+
+.ag-theme-alpine .ag-row-profit-none {
+  background-color: hsl(var(--muted) / 0.05);
+  border-left: 3px solid hsl(var(--muted));
+}
+
+/* Hover effects for profit rows */
+.ag-theme-alpine .ag-row-profit-high:hover {
+  background-color: hsl(var(--success) / 0.1);
+}
+
+.ag-theme-alpine .ag-row-profit-medium:hover {
+  background-color: hsl(var(--warning) / 0.1);
+}
+
+.ag-theme-alpine .ag-row-profit-low:hover {
+  background-color: hsl(var(--destructive) / 0.1);
+}
+
+.ag-theme-alpine .ag-row-profit-none:hover {
+  background-color: hsl(var(--muted) / 0.1);
 }
 
 /* Filter and menu styling */
