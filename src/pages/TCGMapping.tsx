@@ -147,8 +147,8 @@ export default function TCGMapping() {
                   <div>
                     <h3 className="font-semibold">{product.name}</h3>
                     <div className="flex gap-2 mt-1">
-                      <Badge variant="secondary">{product.set_code}</Badge>
-                      <Badge variant="outline">{product.type}</Badge>
+                      <Badge key={`${product.id}-set`} variant="secondary">{product.set_code}</Badge>
+                      <Badge key={`${product.id}-type`} variant="outline">{product.type}</Badge>
                     </div>
                   </div>
                 </div>

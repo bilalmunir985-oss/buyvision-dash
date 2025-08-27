@@ -27,6 +27,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log('Searching for:', query, 'Set:', setCode, 'Type:', type);
+
     const enrichType = (t?: string) => {
       if (!t) return '';
       const tl = String(t).toLowerCase();
@@ -47,137 +49,79 @@ Deno.serve(async (req) => {
 
     const baseHeaders = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json, text/plain, */*',
+      'Accept': 'application/json',
       'Origin': 'https://www.tcgplayer.com',
       'Referer': 'https://www.tcgplayer.com/search/magic/product',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Cache-Control': 'no-cache',
-      'X-Requested-With': 'XMLHttpRequest',
-    } as const;
+    };
 
-    const tryFetch = async (body: any, useMpfev = true) => {
-      const url = useMpfev ? `${SEARCH_URL}?mpfev=4215` : SEARCH_URL;
-      const res = await fetch(url, {
+    // Try the most common working format first
+    const requestBody = {
+      sort: 'productName',
+      limit: 12,
+      offset: 0,
+      filters: {
+        productLineName: ['Magic'],
+        categoryName: ['Sealed Products']
+      },
+      query: enrichedQuery
+    };
+
+    console.log('Request body:', JSON.stringify(requestBody));
+
+    try {
+      const response = await fetch(`${SEARCH_URL}?mpfev=4215`, {
         method: 'POST',
         headers: baseHeaders,
-        body: JSON.stringify(body),
+        body: JSON.stringify(requestBody),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('TCGplayer API non-OK', res.status, text);
-        return [] as TCGSearchResult[];
-      }
-      const json = await res.json();
-      const results = (json?.results ?? json?.data?.results ?? []) as any[];
-      return results
-        .filter(Boolean)
-        .map((r) => ({ productId: Number(r.productId), productName: String(r.productName) }))
-        .filter((r) => Number.isFinite(r.productId) && r.productName);
-    };
 
-    const bodyPreferred = {
-      searchRequestBody: {
-        query: enrichedQuery,
-        sort: 'productName',
-        limit: 12,
-        offset: 0,
-        filters: {
-          ProductLineName: ['Magic'],
-          CategoryName: ['Sealed Products'],
-        },
-      },
-    };
+      console.log('Response status:', response.status);
 
-    const bodyAltCased = {
-      searchRequestBody: {
-        QueryString: enrichedQuery,
-        Sort: 'productName',
-        Size: 12,
-        From: 0,
-        Filters: {
-          ProductLineName: ['Magic'],
-          CategoryName: ['Sealed Products'],
-        },
-      },
-    };
-
-    const bodyLowerKeys = {
-      searchRequestBody: {
-        query: enrichedQuery,
-        sort: 'productName',
-        limit: 12,
-        offset: 0,
-        filters: {
-          productLineName: ['magic'],
-          categoryName: ['Sealed Products'],
-        },
-      },
-    };
-
-    let results: TCGSearchResult[] = [];
-
-    // Try preferred then alternatives
-    results = await tryFetch(bodyPreferred, true);
-    if (!results.length) results = await tryFetch(bodyPreferred, false);
-    if (!results.length) results = await tryFetch(bodyAltCased, true);
-    if (!results.length) results = await tryFetch(bodyAltCased, false);
-    if (!results.length) results = await tryFetch(bodyLowerKeys, true);
-    if (!results.length) results = await tryFetch(bodyLowerKeys, false);
-
-    // HTML fallback if still empty (extracts /product/{id} links and anchor text)
-    if (!results.length) {
-      try {
-        const url = `https://www.tcgplayer.com/search/magic/product?q=${encodeURIComponent(enrichedQuery)}`;
-        const htmlRes = await fetch(url, { headers: { ...baseHeaders, 'Content-Type': 'text/html' } });
-        if (htmlRes.ok) {
-          const html = await htmlRes.text();
-          const matches = Array.from(html.matchAll(/href="\/product\/(\d+)[^"]*"[^>]*>(.*?)<\/a>/gi));
-          const seen = new Set<number>();
-          const parsed: TCGSearchResult[] = [];
-          for (const m of matches) {
-            const id = Number(m[1]);
-            if (!Number.isFinite(id) || seen.has(id)) continue;
-            const name = m[2].replace(/<[^>]*>/g, '').trim();
-            if (name) {
-              parsed.push({ productId: id, productName: name });
-              seen.add(id);
-            }
-            if (parsed.length >= 12) break;
-          }
-          results = parsed;
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Response data keys:', Object.keys(data));
+        
+        // Handle different response structures
+        let results = data.results || [];
+        if (data.data?.results) {
+          results = data.data.results;
         }
-      } catch (e) {
-        console.error('HTML fallback failed', e);
+
+        console.log('Found results:', results.length);
+        
+        // Transform results to match expected format
+        const transformedResults = results
+          .filter((r: any) => r && (r.productId || r.id))
+          .map((r: any) => {
+            const productId = r.productId || r.id;
+            const productName = r.productName || r.name || r.title;
+            console.log(`Result: ${productName} (ID: ${productId})`);
+            return {
+              productId: Number(productId),
+              productName: String(productName)
+            };
+          })
+          .filter((r: TCGSearchResult) => Number.isFinite(r.productId) && r.productName)
+          .slice(0, 12);
+
+        return new Response(
+          JSON.stringify({ results: transformedResults }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      } else {
+        console.error('TCGplayer API error:', response.status, await response.text());
       }
+    } catch (e) {
+      console.error('Request failed:', e);
     }
 
-    // Score and dedupe results
-    const tokens = new Set(enrichedQuery.toLowerCase().split(/\s+/).filter(Boolean));
-    const score = (name: string) => {
-      const nt = name.toLowerCase();
-      let s = 0;
-      tokens.forEach((t) => {
-        if (nt.includes(t)) s += 1;
-      });
-      if (setCode && nt.includes(String(setCode).toLowerCase())) s += 2;
-      const tk = enrichType(type);
-      if (tk && nt.includes(tk.toLowerCase())) s += 2;
-      return s;
-    };
-
-    const deduped = Array.from(
-      new Map(results.map((r) => [r.productId, r])).values()
-    )
-      .map((r) => ({ ...r, _score: score(r.productName) }))
-      .sort((a: any, b: any) => b._score - a._score)
-      .slice(0, 12)
-      .map(({ _score, ...r }) => r as TCGSearchResult);
-
+    // If we get here, return empty results
     return new Response(
-      JSON.stringify({ results: deduped }),
+      JSON.stringify({ results: [] }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
+
   } catch (error) {
     console.error('TCG search error:', error);
     return new Response(
