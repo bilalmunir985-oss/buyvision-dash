@@ -8,6 +8,151 @@ interface TCGSearchResult {
   productName: string;
 }
 
+async function tryTCGSearch(query: string): Promise<TCGSearchResult[]> {
+  // Try different search endpoints and methods
+  const searchStrategies = [
+    // Strategy 1: Current API endpoint
+    {
+      url: "https://mp-search-api.tcgplayer.com/v1/search/request",
+      body: {
+        sort: "productName",
+        limit: 10,
+        filters: {
+          productLineName: "magic",
+          categoryName: "Sealed Products"
+        },
+        query
+      }
+    },
+    // Strategy 2: Alternative payload format
+    {
+      url: "https://mp-search-api.tcgplayer.com/v1/search/request",
+      body: {
+        algorithm: "",
+        from: 0,
+        size: 10,
+        filters: {
+          term: {
+            productLineName: "magic"
+          },
+          range: {},
+          match: {
+            categoryName: "Sealed Products"
+          }
+        },
+        listingSearch: {
+          context: {
+            cart: {}
+          }
+        },
+        context: {
+          cart: {},
+          shippingCountry: "US"
+        },
+        sort: {},
+        q: query
+      }
+    }
+  ];
+
+  for (const strategy of searchStrategies) {
+    try {
+      console.log(`Trying search strategy with URL: ${strategy.url}`);
+      
+      const response = await fetch(strategy.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://www.tcgplayer.com',
+          'Referer': 'https://www.tcgplayer.com/search/magic/product',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-site',
+        },
+        body: JSON.stringify(strategy.body)
+      });
+
+      console.log(`Strategy response status: ${response.status}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Response data keys:', Object.keys(data));
+        
+        // Try different result paths
+        const results = data.results || data.products || data.data || [];
+        if (results.length > 0) {
+          console.log(`Found ${results.length} results`);
+          return results.map((item: any) => ({
+            productId: item.productId || item.id,
+            productName: item.productName || item.name || item.title
+          }));
+        }
+      }
+    } catch (error) {
+      console.log(`Strategy failed:`, error.message);
+      continue;
+    }
+  }
+
+  // Strategy 3: Try HTML scraping as last resort
+  try {
+    console.log('Trying HTML scraping fallback');
+    const searchUrl = `https://www.tcgplayer.com/search/magic/product?q=${encodeURIComponent(query)}&page=1&view=grid`;
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      }
+    });
+
+    if (response.ok) {
+      const html = await response.text();
+      
+      // Extract product links and names from HTML
+      const productRegex = /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g;
+      const results: TCGSearchResult[] = [];
+      let match;
+      
+      while ((match = productRegex.exec(html)) !== null && results.length < 10) {
+        const productId = parseInt(match[1]);
+        const productName = match[2].trim();
+        
+        // Filter for sealed products
+        if (productName.toLowerCase().includes('booster') || 
+            productName.toLowerCase().includes('bundle') || 
+            productName.toLowerCase().includes('box') ||
+            productName.toLowerCase().includes('deck')) {
+          results.push({
+            productId,
+            productName
+          });
+        }
+      }
+      
+      if (results.length > 0) {
+        console.log(`HTML scraping found ${results.length} results`);
+        return results;
+      }
+    }
+  } catch (error) {
+    console.log('HTML scraping failed:', error.message);
+  }
+
+  return [];
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -29,117 +174,41 @@ Deno.serve(async (req) => {
 
     console.log(`Searching TCGplayer for: ${query}`);
 
-    const SEARCH_URL = "https://mp-search-api.tcgplayer.com/v1/search/request";
+    const results = await tryTCGSearch(query);
 
-    const searchBody = {
-      sort: "productName",
-      limit: 6,
-      filters: {
-        productLineName: "magic",
-        categoryName: "Sealed Products"
-      },
-      query
-    };
-
-    console.log('Calling TCGplayer API with body:', JSON.stringify(searchBody));
-
-    try {
-      const response = await fetch(SEARCH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/plain, */*',
-          'Origin': 'https://www.tcgplayer.com',
-          'Referer': 'https://www.tcgplayer.com/search/magic/product',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Cache-Control': 'no-cache',
-        },
-        body: JSON.stringify(searchBody)
-      });
-
-      console.log(`TCGplayer API response status: ${response.status}`);
-
-      if (!response.ok) {
-        console.error(`TCGplayer API error: ${response.status} ${response.statusText}`);
-        const errorText = await response.text();
-        console.error('Error response body:', errorText);
-        
-        // Return mock data as fallback
-        const mockResults: TCGSearchResult[] = [
-          {
-            productId: 77983,
-            productName: `${query} - Sealed Product`
-          },
-          {
-            productId: 78000 + Math.floor(Math.random() * 1000),
-            productName: `${query} Booster Box`
-          },
-          {
-            productId: 78000 + Math.floor(Math.random() * 1000),
-            productName: `${query} Bundle`
-          }
-        ].filter(result => 
-          result.productName.toLowerCase().includes(query.toLowerCase().split(' ')[0])
-        );
-        
-        console.log(`Returning ${mockResults.length} mock results as fallback`);
-        return new Response(
-          JSON.stringify({ results: mockResults }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
-      }
-
-      const data = await response.json();
-      const results: TCGSearchResult[] = data.results || [];
-
-      console.log(`Found ${results.length} results for query: ${query}`);
-
+    if (results.length === 0) {
+      console.log('No results found from any strategy');
       return new Response(
-        JSON.stringify({ results }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
-      );
-    } catch (fetchError) {
-      console.error('Fetch error:', fetchError);
-      
-      // Return mock data as fallback for network issues
-      const mockResults: TCGSearchResult[] = [
-        {
-          productId: 77983,
-          productName: `${query} - Sealed Product`
-        },
-        {
-          productId: 78000 + Math.floor(Math.random() * 1000),
-          productName: `${query} Booster Box`
-        }
-      ].filter(result => 
-        result.productName.toLowerCase().includes(query.toLowerCase().split(' ')[0])
-      );
-      
-      return new Response(
-        JSON.stringify({ results: mockResults }),
+        JSON.stringify({ 
+          results: [],
+          message: 'No matching products found. Try a different search term or check the product name.'
+        }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200,
         }
       );
     }
+
+    console.log(`Returning ${results.length} real results`);
+    return new Response(
+      JSON.stringify({ results }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    );
+
   } catch (error) {
     console.error('TCG search error:', error);
     return new Response(
       JSON.stringify({
-        error: 'Internal server error',
-        message: error.message,
+        error: 'Search temporarily unavailable',
+        message: 'Please try again in a moment'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
+        status: 503,
       }
     );
   }
