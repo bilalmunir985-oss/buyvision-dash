@@ -56,6 +56,7 @@ export default function Dashboard() {
     bestDeal: 0,
     highPriced: 0
   });
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -277,6 +278,48 @@ export default function Dashboard() {
   // Check if any filters are active
   const hasActiveFilters = searchQuery.trim() || selectedType !== 'all' || selectedSetCode !== 'all' || 
     priceRange.min || priceRange.max || marginRange.min || marginRange.max;
+
+  const fetchPrices = async () => {
+    try {
+      setIsFetchingPrices(true);
+      
+      toast({
+        title: "Fetching latest prices...",
+        description: "This may take a few minutes to complete",
+      });
+
+      const { data, error } = await supabase.functions.invoke('fetch-prices');
+
+      if (error) {
+        console.error('Error fetching prices:', error);
+        toast({
+          title: "Error fetching prices",
+          description: error.message || "Please try again later",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log('Price fetch result:', data);
+      
+      toast({
+        title: "Price fetch completed",
+        description: `Processed ${data.processed || 0} products with ${data.errors || 0} errors`,
+      });
+
+      // Refresh dashboard data to show updated prices
+      await fetchDashboardData();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error fetching prices",
+        description: "Please try again later",
+        variant: "destructive",
+      });
+    } finally {
+      setIsFetchingPrices(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -580,15 +623,31 @@ export default function Dashboard() {
                 Current pricing data for MTG sealed products ({filteredData.length} items)
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchDashboardData}
-              className="flex items-center gap-2"
-            >
-              <DollarSign className="h-4 w-4" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchPrices}
+                disabled={isFetchingPrices}
+                className="flex items-center gap-2"
+              >
+                {isFetchingPrices ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <TrendingUp className="h-4 w-4" />
+                )}
+                {isFetchingPrices ? 'Fetching...' : 'Fetch Prices'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchDashboardData}
+                className="flex items-center gap-2"
+              >
+                <DollarSign className="h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">

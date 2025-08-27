@@ -28,6 +28,8 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
     // Use the public listings endpoint with mpfev parameter (TCGPlayer frontend version flag)
     const listingsUrl = `https://mp-search-api.tcgplayer.com/v1/product/${tcgplayerId}/listings?mpfev=4215`;
     
+    console.log(`Fetching pricing for TCGplayer ID: ${tcgplayerId}`);
+    
     const response = await fetch(listingsUrl, {
       method: 'POST',
       headers: {
@@ -38,6 +40,11 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control': 'no-cache',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
       },
       body: JSON.stringify({
         filters: {
@@ -50,15 +57,31 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
       })
     });
 
+    console.log(`Response status: ${response.status} ${response.statusText}`);
+    
     if (!response.ok) {
-      console.error(`Failed to fetch listings for product ${tcgplayerId}: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`Failed to fetch listings for product ${tcgplayerId}: ${response.status} ${response.statusText}`);
+      console.error(`Error response: ${errorText}`);
       return null;
     }
 
     const data = await response.json();
+    console.log(`API Response structure for product ${tcgplayerId}:`, {
+      hasResults: !!data.results,
+      resultsLength: data.results?.length || 0,
+      keys: Object.keys(data),
+      sampleResult: data.results?.[0] ? {
+        hasPrice: typeof data.results[0].price !== 'undefined',
+        hasQuantity: typeof data.results[0].quantity !== 'undefined',
+        hasShipping: typeof data.results[0].shipping !== 'undefined'
+      } : null
+    });
+
     const listings: TCGListing[] = data.results || [];
 
     if (listings.length === 0) {
+      console.log(`No listings found for product ${tcgplayerId}`);
       return {
         lowest_total_price: null,
         lowest_item_price: null,
@@ -68,26 +91,51 @@ async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | nul
       };
     }
 
+    console.log(`Found ${listings.length} listings for product ${tcgplayerId}`);
+
+    // Validate and clean listing data
+    const validListings = listings.filter(l => 
+      typeof l.price === 'number' && 
+      l.price > 0 && 
+      typeof l.quantity === 'number' && 
+      l.quantity > 0
+    );
+
+    if (validListings.length === 0) {
+      console.log(`No valid listings found for product ${tcgplayerId}`);
+      return {
+        lowest_total_price: null,
+        lowest_item_price: null,
+        num_listings: listings.length,
+        total_quantity_listed: 0,
+        product_url: `https://www.tcgplayer.com/product/${tcgplayerId}`
+      };
+    }
+
     // Calculate lowest total price (item + shipping)
-    const lowestTotalPrice = Math.min(...listings.map(l => l.price + (l.shipping || 0)));
+    const lowestTotalPrice = Math.min(...validListings.map(l => l.price + (l.shipping || 0)));
 
     // Calculate lowest item price for listings with 10+ quantity
-    const highQuantityListings = listings.filter(l => l.quantity >= 10);
+    const highQuantityListings = validListings.filter(l => l.quantity >= 10);
     const lowestItemPrice = highQuantityListings.length > 0 
       ? Math.min(...highQuantityListings.map(l => l.price))
-      : null;
+      : (validListings.length > 0 ? Math.min(...validListings.map(l => l.price)) : null);
 
-    const totalQuantity = listings.reduce((sum, l) => sum + l.quantity, 0);
+    const totalQuantity = validListings.reduce((sum, l) => sum + l.quantity, 0);
 
-    return {
+    const result = {
       lowest_total_price: lowestTotalPrice,
       lowest_item_price: lowestItemPrice,
-      num_listings: listings.length,
+      num_listings: validListings.length,
       total_quantity_listed: totalQuantity,
       product_url: `https://www.tcgplayer.com/product/${tcgplayerId}`
     };
+
+    console.log(`Pricing data for product ${tcgplayerId}:`, result);
+    return result;
   } catch (error) {
     console.error(`Error fetching pricing for product ${tcgplayerId}:`, error);
+    console.error(`Error details:`, error.message, error.stack);
     return null;
   }
 }
