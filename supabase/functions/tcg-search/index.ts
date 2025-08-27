@@ -120,26 +120,51 @@ Deno.serve(async (req: Request) => {
 
   console.log('Searching for:', query);
 
-  // Try only working payload formats
+  // Try only working payload formats (retry across known shapes)
   const variants = [
-    // Simple object-based filters (this format works)
-    { 
-      sort: 'productName', 
-      limit: 10, 
-      filters: { 
+    // v1: filters as object with string values
+    {
+      sort: 'productName',
+      limit: 10,
+      offset: 0,
+      filters: {
         productLineName: 'magic',
         categoryName: 'Sealed Products'
-      }, 
-      query 
+      },
+      query
     },
-    // Alternative category filter
-    { 
-      sort: 'productName', 
-      limit: 10, 
-      filters: { 
-        productLineName: 'magic'
-      }, 
-      query 
+    // v2: filters as object with array values
+    {
+      sort: 'productName',
+      limit: 10,
+      offset: 0,
+      filters: {
+        productLineName: ['magic'],
+        categoryName: ['Sealed Products']
+      },
+      query
+    },
+    // v3: filters as array of name/values objects
+    {
+      sort: 'productName',
+      limit: 10,
+      offset: 0,
+      filters: [
+        { name: 'productLineName', values: ['magic'] },
+        { name: 'categoryName', values: ['Sealed Products'] }
+      ],
+      query
+    },
+    // v4: alternative payload with search.text
+    {
+      algorithm: 'sales',
+      offset: 0,
+      limit: 10,
+      filters: {
+        productLineName: ['magic'],
+        categoryName: ['Sealed Products']
+      },
+      search: { text: query }
     }
   ];
 
