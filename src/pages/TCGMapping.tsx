@@ -53,14 +53,19 @@ export default function TCGMapping() {
     }
   };
 
-  const handleFindMatches = async (productId: string, productName: string) => {
+  const handleFindMatches = async (
+    productId: string,
+    productName: string,
+    setCode?: string | null,
+    productType?: string
+  ) => {
     setSelectedProduct(productId);
     setSearching(true);
     setSearchResults([]);
 
     try {
       const response = await supabase.functions.invoke('tcg-search', {
-        body: { query: productName }
+        body: { query: productName, setCode, type: productType }
       });
 
       if (response.error) throw response.error;
@@ -149,7 +154,7 @@ export default function TCGMapping() {
                 </div>
                 <Button
                   size="sm"
-                  onClick={() => handleFindMatches(product.id, product.name)}
+                  onClick={() => handleFindMatches(product.id, product.name, product.set_code, product.type)}
                   disabled={searching}
                 >
                   <Search className="h-4 w-4 mr-2" />
