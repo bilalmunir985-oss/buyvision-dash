@@ -192,6 +192,11 @@ Deno.serve(async (req) => {
 
     console.log('Starting price fetch job...');
 
+    // Test with a known good TCGplayer product ID first
+    console.log('Testing API with known good product ID...');
+    const testResult = await fetchProductPricing(258598); // Wilds of Eldraine Set Booster Box
+    console.log('Test API result:', testResult);
+
     // Get all verified products with TCGplayer IDs
     const { data: products, error: productsError } = await supabaseClient
       .from('products')
