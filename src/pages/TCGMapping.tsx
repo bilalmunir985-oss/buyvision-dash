@@ -69,23 +69,11 @@ export default function TCGMapping() {
       });
 
       if (response.error) throw response.error;
-      
-      const results = response.data?.results || [];
-      setSearchResults(results);
-      
-      // Show message if no results but there was an API error
-      if (results.length === 0 && response.data?.message) {
-        toast({
-          title: "Search completed",
-          description: response.data.message,
-          variant: "destructive",
-        });
-      }
+      setSearchResults(response.data?.results || []);
     } catch (error) {
       console.error('Error:', error);
       toast({
         title: "Search failed",
-        description: "Unable to search TCGplayer. Please try again.",
         variant: "destructive",
       });
     } finally {
