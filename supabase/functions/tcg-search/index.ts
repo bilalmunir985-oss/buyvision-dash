@@ -76,66 +76,81 @@ Deno.serve(async (req) => {
         .filter((r) => Number.isFinite(r.productId) && r.productName);
     };
 
-    const bodyWrappedV1 = {
+    const bodyPreferred = {
       searchRequestBody: {
+        query: enrichedQuery,
         sort: 'productName',
         limit: 12,
         offset: 0,
         filters: {
-          productLineName: 'magic',
-          categoryName: 'Sealed Products',
+          ProductLineName: ['Magic'],
+          CategoryName: ['Sealed Products'],
         },
-        query: enrichedQuery,
       },
     };
 
-    const bodyWrappedV2 = {
+    const bodyAltCased = {
       searchRequestBody: {
+        QueryString: enrichedQuery,
+        Sort: 'productName',
+        Size: 12,
+        From: 0,
+        Filters: {
+          ProductLineName: ['Magic'],
+          CategoryName: ['Sealed Products'],
+        },
+      },
+    };
+
+    const bodyLowerKeys = {
+      searchRequestBody: {
+        query: enrichedQuery,
         sort: 'productName',
         limit: 12,
         offset: 0,
-        filters: [
-          { name: 'ProductLineName', values: ['Magic'] },
-          { name: 'CategoryName', values: ['Sealed Products'] },
-        ],
-        query: enrichedQuery,
+        filters: {
+          productLineName: ['magic'],
+          categoryName: ['Sealed Products'],
+        },
       },
-    };
-
-    // Legacy formats kept as fallback in case TCGplayer changes again
-    const legacyV1 = {
-      sort: 'productName',
-      limit: 12,
-      offset: 0,
-      filters: {
-        productLineName: 'magic',
-        categoryName: 'Sealed Products',
-      },
-      query: enrichedQuery,
-    };
-
-    const legacyV2 = {
-      sort: 'productName',
-      limit: 12,
-      offset: 0,
-      filters: [
-        { name: 'ProductLineName', values: ['Magic'] },
-        { name: 'CategoryName', values: ['Sealed Products'] },
-      ],
-      query: enrichedQuery,
     };
 
     let results: TCGSearchResult[] = [];
 
-    // Try wrapped formats (preferred), then legacy formats
-    results = await tryFetch(bodyWrappedV1, true);
-    if (!results.length) results = await tryFetch(bodyWrappedV1, false);
-    if (!results.length) results = await tryFetch(bodyWrappedV2, true);
-    if (!results.length) results = await tryFetch(bodyWrappedV2, false);
-    if (!results.length) results = await tryFetch(legacyV1, true);
-    if (!results.length) results = await tryFetch(legacyV1, false);
-    if (!results.length) results = await tryFetch(legacyV2, true);
-    if (!results.length) results = await tryFetch(legacyV2, false);
+    // Try preferred then alternatives
+    results = await tryFetch(bodyPreferred, true);
+    if (!results.length) results = await tryFetch(bodyPreferred, false);
+    if (!results.length) results = await tryFetch(bodyAltCased, true);
+    if (!results.length) results = await tryFetch(bodyAltCased, false);
+    if (!results.length) results = await tryFetch(bodyLowerKeys, true);
+    if (!results.length) results = await tryFetch(bodyLowerKeys, false);
+
+    // HTML fallback if still empty (extracts /product/{id} links and anchor text)
+    if (!results.length) {
+      try {
+        const url = `https://www.tcgplayer.com/search/magic/product?q=${encodeURIComponent(enrichedQuery)}`;
+        const htmlRes = await fetch(url, { headers: { ...baseHeaders, 'Content-Type': 'text/html' } });
+        if (htmlRes.ok) {
+          const html = await htmlRes.text();
+          const matches = Array.from(html.matchAll(/href=\"\\/product\\\/(\d+)[^\"]*\"[^>]*>(.*?)<\\/a>/gi));
+          const seen = new Set<number>();
+          const parsed: TCGSearchResult[] = [];
+          for (const m of matches) {
+            const id = Number(m[1]);
+            if (!Number.isFinite(id) || seen.has(id)) continue;
+            const name = m[2].replace(/<[^>]*>/g, '').trim();
+            if (name) {
+              parsed.push({ productId: id, productName: name });
+              seen.add(id);
+            }
+            if (parsed.length >= 12) break;
+          }
+          results = parsed;
+        }
+      } catch (e) {
+        console.error('HTML fallback failed', e);
+      }
+    }
 
     // Score and dedupe results
     const tokens = new Set(enrichedQuery.toLowerCase().split(/\s+/).filter(Boolean));
