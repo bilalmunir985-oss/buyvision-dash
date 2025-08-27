@@ -84,23 +84,33 @@ async function tryHtml(query: string) {
   const html = await r.text();
   console.log('HTML length received:', html.length);
   
-  // Simple extraction of product IDs - don't over-validate
-  const productIds = [...html.matchAll(/\/product\/(\d+)/g)].map(m => parseInt(m[1]));
-  console.log('Product IDs found:', productIds.slice(0, 10)); // Log first 10
+  // Extract all product IDs from href="/product/123456" links
+  const productIds = [...html.matchAll(/\/product\/(\d+)/g)]
+    .map(m => parseInt(m[1]))
+    .filter(id => id > 0)
+    .slice(0, 10); // Limit to 10 results
   
-  // Try to get product names from data attributes or titles
+  console.log('Product IDs found:', productIds);
+  
   const results: Array<{productId: number, productName: string}> = [];
   
-  for (const productId of productIds.slice(0, 10)) {
-    // Try to find the product name near this ID
-    const nameRegex = new RegExp(`data-product-name="([^"]+)"|title="([^"]+)"|>([^<]*(?:booster|bundle|box|deck|case|collector)[^<]*)<`, 'gi');
-    const nameMatch = nameRegex.exec(html);
+  // For each ID, try to find the associated product name
+  for (const productId of productIds) {
+    let productName = `TCG Product #${productId}`;
     
-    let productName = `TCG Product #${productId}`; // Fallback name
+    // Look for product names in common patterns
+    const patterns = [
+      new RegExp(`href="/product/${productId}[^"]*"[^>]*title="([^"]+)"`, 'i'),
+      new RegExp(`data-productid="${productId}"[^>]*>\\s*([^<]+)`, 'i'),
+      new RegExp(`/product/${productId}[^"]*"[^>]*>([^<]+(?:booster|bundle|box|deck|case)[^<]*)<`, 'i')
+    ];
     
-    if (nameMatch) {
-      productName = nameMatch[1] || nameMatch[2] || nameMatch[3] || productName;
-      productName = productName.trim();
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match && match[1] && match[1].trim().length > 3) {
+        productName = match[1].trim();
+        break;
+      }
     }
     
     results.push({
@@ -125,60 +135,78 @@ Deno.serve(async (req: Request) => {
 
   console.log('Searching for:', query, setName ? `(set: ${setName})` : '');
 
-  // Correct JSON payload formats - only array-style filters
+  // ONLY array-of-objects filter format (no object-style filters)
   const variants = [
-    // v1: Current working format
+    // v1: Full format with sealed products filter
     {
       from: 0,
       size: 12,
-      sort: "productName",
+      sort: 'productName',
       filters: [
-        { name: "productLineName", values: ["magic"] },
-        { name: "productTypeName", values: ["Sealed Products"] },
-        ...(setName ? [{ name: "setName", values: [setName] }] : [])
+        { name: 'productLineName', values: ['magic'] },
+        { name: 'categoryName', values: ['Sealed Products'] },
+        ...(setName ? [{ name: 'setName', values: [setName] }] : [])
       ],
       search: {
-        kind: "string",
+        kind: 'string',
         query
       },
       context: {
-        shippingCountry: "US",
-        language: "en"
+        shippingCountry: 'US',
+        language: 'en'
       }
     },
-    // v2: Alternative array format
+    
+    // v2: Minimal format with just magic filter
     {
-      sort: "productName",
+      from: 0,
+      size: 12,
+      sort: 'productName',
+      filters: [
+        { name: 'productLineName', values: ['magic'] }
+      ],
+      search: {
+        kind: 'string',
+        query
+      },
+      context: {
+        shippingCountry: 'US',
+        language: 'en'
+      }
+    },
+    
+    // v3: Alternative structure without context
+    {
+      sort: 'productName',
       limit: 10,
       offset: 0,
       filters: [
-        { name: "productLineName", values: ["magic"] },
-        { name: "categoryName", values: ["Sealed Products"] }
+        { name: 'productLineName', values: ['magic'] },
+        { name: 'categoryName', values: ['Sealed Products'] }
       ],
       query
-    },
-    // v3: Minimal array format
-    {
-      limit: 10,
-      filters: [
-        { name: "productLineName", values: ["magic"] }
-      ],
-      search: query
     }
   ];
 
-  // Try JSON variants first
-  for (const payload of variants) {
+  // Try JSON variants with retry logic
+  for (let i = 0; i < variants.length; i++) {
+    const payload = variants[i];
+    console.log(`Trying variant ${i + 1}/${variants.length}`);
+    
     const items = await tryJson(payload);
     if (items.length > 0) {
-      console.log(`Success with ${items.length} results`);
+      console.log(`JSON success with variant ${i + 1}: ${items.length} results`);
       return new Response(JSON.stringify({ results: items }), { headers: cors });
     }
+    
     // Brief pause between attempts
-    await new Promise(r => setTimeout(r, 500));
+    if (i < variants.length - 1) {
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
 
-  // Try HTML fallback
+  // Fallback to HTML scraping
+  console.log('All JSON variants failed, trying HTML fallback');
   const htmlItems = await tryHtml(query);
   if (htmlItems.length > 0) {
     console.log(`HTML fallback success with ${htmlItems.length} results`);
