@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Loader2, 
@@ -18,7 +19,9 @@ import {
   Target,
   BarChart3,
   ArrowUpRight,
-  ExternalLink
+  ExternalLink,
+  Filter,
+  X
 } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
@@ -40,6 +43,13 @@ export default function Dashboard() {
   const [filteredData, setFilteredData] = useState<DashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Filter states
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [priceRange, setPriceRange] = useState<{ min: string; max: string }>({ min: '', max: '' });
+  const [marginRange, setMarginRange] = useState<{ min: string; max: string }>({ min: '', max: '' });
+  const [selectedSetCode, setSelectedSetCode] = useState<string>('all');
+  
   const [stats, setStats] = useState({
     totalProducts: 0,
     avgSavings: 0,
@@ -192,20 +202,81 @@ export default function Dashboard() {
     fetchDashboardData();
   }, []);
 
-  // Search functionality
+  // Get unique values for filters
+  const uniqueTypes = useMemo(() => {
+    const types = [...new Set(rowData.map(item => item.type))];
+    return types.sort();
+  }, [rowData]);
+
+  const uniqueSetCodes = useMemo(() => {
+    const setCodes = [...new Set(rowData.map(item => item.set_code))];
+    return setCodes.sort();
+  }, [rowData]);
+
+  // Combined search and filter functionality
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredData(rowData);
-      return;
+    let filtered = rowData;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(item =>
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.set_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.type.toLowerCase().includes(searchQuery.toLowerCase())
+      );
     }
 
-    const filtered = rowData.filter(item =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.set_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.type.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Apply type filter
+    if (selectedType !== 'all') {
+      filtered = filtered.filter(item => item.type === selectedType);
+    }
+
+    // Apply set code filter
+    if (selectedSetCode !== 'all') {
+      filtered = filtered.filter(item => item.set_code === selectedSetCode);
+    }
+
+    // Apply price range filter
+    if (priceRange.min || priceRange.max) {
+      filtered = filtered.filter(item => {
+        const price = item.lowest_total_price;
+        if (!price) return false;
+        
+        const minPrice = priceRange.min ? parseFloat(priceRange.min) : 0;
+        const maxPrice = priceRange.max ? parseFloat(priceRange.max) : Infinity;
+        
+        return price >= minPrice && price <= maxPrice;
+      });
+    }
+
+    // Apply margin range filter
+    if (marginRange.min || marginRange.max) {
+      filtered = filtered.filter(item => {
+        const margin = item.profit_margin;
+        if (margin === null || margin === undefined) return false;
+        
+        const minMargin = marginRange.min ? parseFloat(marginRange.min) : -Infinity;
+        const maxMargin = marginRange.max ? parseFloat(marginRange.max) : Infinity;
+        
+        return margin >= minMargin && margin <= maxMargin;
+      });
+    }
+
     setFilteredData(filtered);
-  }, [searchQuery, rowData]);
+  }, [searchQuery, rowData, selectedType, selectedSetCode, priceRange, marginRange]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedType('all');
+    setSelectedSetCode('all');
+    setPriceRange({ min: '', max: '' });
+    setMarginRange({ min: '', max: '' });
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery.trim() || selectedType !== 'all' || selectedSetCode !== 'all' || 
+    priceRange.min || priceRange.max || marginRange.min || marginRange.max;
 
   const fetchDashboardData = async () => {
     try {
@@ -372,6 +443,130 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Advanced Filters */}
+      <Card className="shadow-sm border-border/40">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-lg">Advanced Filters</CardTitle>
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="ml-2">
+                  {filteredData.length} results
+                </Badge>
+              )}
+            </div>
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Row 1: Search and Type */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search products, sets, types..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Product Type</label>
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {uniqueTypes.map(type => (
+                    <SelectItem key={type} value={type}>
+                      {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Set Code</label>
+              <Select value={selectedSetCode} onValueChange={setSelectedSetCode}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All sets" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sets</SelectItem>
+                  {uniqueSetCodes.map(setCode => (
+                    <SelectItem key={setCode} value={setCode}>
+                      {setCode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Row 2: Price and Margin Ranges */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Price Range ($)</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="Min"
+                  value={priceRange.min}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                  className="flex-1"
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <Input
+                  type="number"
+                  placeholder="Max"
+                  value={priceRange.max}
+                  onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Profit Margin (%)</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="Min"
+                  value={marginRange.min}
+                  onChange={(e) => setMarginRange(prev => ({ ...prev, min: e.target.value }))}
+                  className="flex-1"
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <Input
+                  type="number"
+                  placeholder="Max"
+                  value={marginRange.max}
+                  onChange={(e) => setMarginRange(prev => ({ ...prev, max: e.target.value }))}
+                  className="flex-1"
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Data Grid */}
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
@@ -385,26 +580,15 @@ export default function Dashboard() {
                 Current pricing data for MTG sealed products ({filteredData.length} items)
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchDashboardData}
-                className="flex items-center gap-2"
-              >
-                <DollarSign className="h-4 w-4" />
-                Refresh
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchDashboardData}
+              className="flex items-center gap-2"
+            >
+              <DollarSign className="h-4 w-4" />
+              Refresh
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
@@ -414,9 +598,8 @@ export default function Dashboard() {
               columnDefs={columnDefs}
               defaultColDef={{
                 sortable: true,
-                filter: true,
+                filter: false,
                 resizable: true,
-                menuTabs: ['filterMenuTab', 'generalMenuTab'],
               }}
               onGridReady={onGridReady}
               animateRows={true}
