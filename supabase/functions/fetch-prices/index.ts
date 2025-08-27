@@ -25,12 +25,19 @@ async function sleep(ms: number) {
 
 async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | null> {
   try {
-    const listingsUrl = `https://mp-search-api.tcgplayer.com/v1/product/${tcgplayerId}/listings`;
+    // Use the public listings endpoint with mpfev parameter (TCGPlayer frontend version flag)
+    const listingsUrl = `https://mp-search-api.tcgplayer.com/v1/product/${tcgplayerId}/listings?mpfev=4215`;
     
     const response = await fetch(listingsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://www.tcgplayer.com',
+        'Referer': `https://www.tcgplayer.com/product/${tcgplayerId}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
       },
       body: JSON.stringify({
         filters: {
