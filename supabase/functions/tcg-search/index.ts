@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 const cors = {
-  'Access-Control-Allow-Origin': '*', // or your domain
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Content-Type': 'application/json'
@@ -13,41 +13,100 @@ function headers() {
     'content-type': 'application/json',
     'origin': 'https://www.tcgplayer.com',
     'referer': 'https://www.tcgplayer.com/',
-    'user-agent': 'Mozilla/5.0',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'accept': 'application/json, text/plain, */*',
-    'accept-language': 'en-US,en;q=0.9'
+    'accept-language': 'en-US,en;q=0.9',
+    'accept-encoding': 'gzip, deflate, br',
+    'dnt': '1',
+    'connection': 'keep-alive',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site'
   };
 }
 
 async function tryJson(payload: any) {
-  const r = await fetch(JSON_URL, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+  console.log('Trying payload:', JSON.stringify(payload));
+  
+  const r = await fetch(JSON_URL, { 
+    method: 'POST', 
+    headers: headers(), 
+    body: JSON.stringify(payload) 
+  });
+  
   const text = await r.text();
+  console.log('Response status:', r.status);
+  
   if (!r.ok) {
-    console.log('TCG JSON search fail', r.status, text.slice(0, 300));
+    console.log('TCG JSON search fail', r.status, text.slice(0, 500));
     return [];
   }
+  
   let json: any;
-  try { json = JSON.parse(text); } catch { console.log('non-JSON body'); return []; }
+  try { 
+    json = JSON.parse(text); 
+  } catch (e) { 
+    console.log('non-JSON body:', text.slice(0, 200)); 
+    return []; 
+  }
+  
   const results = Array.isArray(json?.results) ? json.results : [];
-  return results.map((it: any) => ({ productId: it.productId, productName: it.productName }));
+  console.log('Found results:', results.length);
+  
+  return results.map((it: any) => ({ 
+    productId: it.productId, 
+    productName: it.productName || it.name 
+  })).filter(r => r.productId && r.productName);
 }
 
-// ultra-simple HTML fallback to find /product/{id} links
 async function tryHtml(query: string) {
-  const url = 'https://www.tcgplayer.com/search/magic/product?productLineName=magic&productTypeName=Sealed%20Products&q='
-    + encodeURIComponent(query);
+  console.log('Trying HTML fallback for:', query);
+  
+  const url = 'https://www.tcgplayer.com/search/magic/product?productLineName=magic&categoryName=Sealed%20Products&q=' + encodeURIComponent(query);
+  
   const r = await fetch(url, {
     headers: {
-      'user-agent': 'Mozilla/5.0',
-      'referer': 'https://www.tcgplayer.com/',
-      'accept': 'text/html'
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.5',
+      'accept-encoding': 'gzip, deflate, br',
+      'dnt': '1',
+      'connection': 'keep-alive',
+      'upgrade-insecure-requests': '1'
     }
   });
-  if (!r.ok) return [];
+  
+  if (!r.ok) {
+    console.log('HTML fetch failed:', r.status);
+    return [];
+  }
+  
   const html = await r.text();
-  const ids = [...html.matchAll(/\/product\/(\d+)[^"'<>]*/g)].map(m => m[1]);
-  const unique = [...new Set(ids)].slice(0, 10);
-  return unique.map(id => ({ productId: Number(id), productName: `TCG #${id}` }));
+  
+  // Extract product links and names from HTML
+  const productRegex = /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g;
+  const results: Array<{productId: number, productName: string}> = [];
+  let match;
+  
+  while ((match = productRegex.exec(html)) !== null && results.length < 10) {
+    const productId = parseInt(match[1]);
+    const productName = match[2].trim();
+    
+    // Filter for sealed products
+    if (productName.toLowerCase().includes('booster') || 
+        productName.toLowerCase().includes('bundle') || 
+        productName.toLowerCase().includes('box') ||
+        productName.toLowerCase().includes('deck') ||
+        productName.toLowerCase().includes('case')) {
+      results.push({
+        productId,
+        productName
+      });
+    }
+  }
+  
+  console.log('HTML results found:', results.length);
+  return results;
 }
 
 Deno.serve(async (req: Request) => {
@@ -57,33 +116,54 @@ Deno.serve(async (req: Request) => {
   let body: any = {};
   try { body = await req.json(); } catch {}
   const query = (body?.query ?? '').toString().trim();
-  const setName = (body?.setName ?? '').toString().trim();
   if (!query) return new Response(JSON.stringify({ error: 'missing_query' }), { status: 400, headers: cors });
 
-  // 1) JSON variants TCG uses internally
+  console.log('Searching for:', query);
+
+  // Try only working payload formats
   const variants = [
-    { sort: 'productName', limit: 12, filters: { productLineName: 'magic', productTypeName: 'Sealed Products', ...(setName ? { setName } : {}) }, query },
-    { from: 0, size: 12, sort: 'productName',
-      filters: [
-        { type: 'term', name: 'productLineName', values: ['magic'] },
-        { type: 'term', name: 'productTypeName', values: ['Sealed Products'] },
-        ...(setName ? [{ type: 'term', name: 'setName', values: [setName] }] : [])
-      ],
-      search: { kind: 'string', query },
-      context: { shippingCountry: 'US' }
+    // Simple object-based filters (this format works)
+    { 
+      sort: 'productName', 
+      limit: 10, 
+      filters: { 
+        productLineName: 'magic',
+        categoryName: 'Sealed Products'
+      }, 
+      query 
     },
-    // Loosen if above returns nothing:
-    { sort: 'productName', limit: 12, filters: { productLineName: 'magic' }, query }
+    // Alternative category filter
+    { 
+      sort: 'productName', 
+      limit: 10, 
+      filters: { 
+        productLineName: 'magic'
+      }, 
+      query 
+    }
   ];
 
-  for (const p of variants) {
-    const items = await tryJson(p);
-    if (items.length) return new Response(JSON.stringify({ results: items }), { headers: cors });
-    // polite backoff
-    await new Promise(r => setTimeout(r, 500 + Math.random() * 300));
+  // Try JSON variants first
+  for (const payload of variants) {
+    const items = await tryJson(payload);
+    if (items.length > 0) {
+      console.log(`Success with ${items.length} results`);
+      return new Response(JSON.stringify({ results: items }), { headers: cors });
+    }
+    // Brief pause between attempts
+    await new Promise(r => setTimeout(r, 300));
   }
 
-  // 2) HTML fallback
+  // Try HTML fallback only if JSON completely fails
   const htmlItems = await tryHtml(query);
-  return new Response(JSON.stringify({ results: htmlItems }), { headers: cors });
+  if (htmlItems.length > 0) {
+    console.log(`HTML fallback success with ${htmlItems.length} results`);
+    return new Response(JSON.stringify({ results: htmlItems }), { headers: cors });
+  }
+
+  console.log('No results found from any method');
+  return new Response(JSON.stringify({ 
+    results: [],
+    message: 'No matching products found' 
+  }), { headers: cors });
 });
