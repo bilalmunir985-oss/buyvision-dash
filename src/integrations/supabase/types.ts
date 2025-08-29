@@ -14,6 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      blueprints: {
+        Row: {
+          card_market_ids: Json | null
+          category_id: number | null
+          created_at: string
+          expansion_id: number | null
+          id: number
+          image_url: string | null
+          name: string
+          scryfall_id: string | null
+          tcg_player_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          card_market_ids?: Json | null
+          category_id?: number | null
+          created_at?: string
+          expansion_id?: number | null
+          id: number
+          image_url?: string | null
+          name: string
+          scryfall_id?: string | null
+          tcg_player_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          card_market_ids?: Json | null
+          category_id?: number | null
+          created_at?: string
+          expansion_id?: number | null
+          id?: number
+          image_url?: string | null
+          name?: string
+          scryfall_id?: string | null
+          tcg_player_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blueprints_expansion_id_fkey"
+            columns: ["expansion_id"]
+            isOneToOne: false
+            referencedRelation: "expansions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cardtrader_daily_metrics: {
+        Row: {
+          created_at: string
+          currency: string | null
+          date: string
+          id: string
+          lowest_price: number | null
+          mapping_id: string | null
+          num_listings: number | null
+          total_quantity: number | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string | null
+          date?: string
+          id?: string
+          lowest_price?: number | null
+          mapping_id?: string | null
+          num_listings?: number | null
+          total_quantity?: number | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string | null
+          date?: string
+          id?: string
+          lowest_price?: number | null
+          mapping_id?: string | null
+          num_listings?: number | null
+          total_quantity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cardtrader_daily_metrics_mapping_id_fkey"
+            columns: ["mapping_id"]
+            isOneToOne: false
+            referencedRelation: "product_mappings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_metrics: {
         Row: {
           as_of_date: string
@@ -71,6 +159,33 @@ export type Database = {
           },
         ]
       }
+      expansions: {
+        Row: {
+          code: string | null
+          created_at: string
+          game_id: number
+          id: number
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          game_id: number
+          id: number
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          game_id?: number
+          id?: number
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       product_contents: {
         Row: {
           contained_name: string
@@ -107,6 +222,61 @@ export type Database = {
           {
             foreignKeyName: "product_contents_product_id_fkey"
             columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vw_unmapped_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_mappings: {
+        Row: {
+          blueprint_id: number | null
+          blueprint_name: string
+          cardtrader_url: string | null
+          created_at: string
+          id: string
+          mtg_product_id: string | null
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          blueprint_id?: number | null
+          blueprint_name: string
+          cardtrader_url?: string | null
+          created_at?: string
+          id?: string
+          mtg_product_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          blueprint_id?: number | null
+          blueprint_name?: string
+          cardtrader_url?: string | null
+          created_at?: string
+          id?: string
+          mtg_product_id?: string | null
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_mappings_blueprint_id_fkey"
+            columns: ["blueprint_id"]
+            isOneToOne: false
+            referencedRelation: "blueprints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_mappings_mtg_product_id_fkey"
+            columns: ["mtg_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_mappings_mtg_product_id_fkey"
+            columns: ["mtg_product_id"]
             isOneToOne: false
             referencedRelation: "vw_unmapped_products"
             referencedColumns: ["id"]
