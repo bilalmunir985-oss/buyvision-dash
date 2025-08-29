@@ -13,21 +13,20 @@ interface Product {
   type: string;
 }
 
-interface CardTraderSearchResult {
-  blueprintId: number;
-  blueprintName: string;
-  cardtraderUrl: string;
+interface TCGSearchResult {
+  productId: number;
+  productName: string;
 }
 
-export default function CardTraderMapping() {
+export default function TCGMapping() {
   const [unverifiedProducts, setUnverifiedProducts] = useState<Product[]>([]);
-  const [searchResults, setSearchResults] = useState<CardTraderSearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<TCGSearchResult[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [autoMapping, setAutoMapping] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
-  const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, blueprintId: number} | null>(null);
+  const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -37,11 +36,9 @@ export default function CardTraderMapping() {
   const fetchUnverifiedProducts = async () => {
     try {
       const { data, error } = await supabase
-        .from('products')
-        .select('id, name, set_code, type')
-        .eq('cardtrader_is_verified', false)
-        .eq('active', true)
-        .order('name');
+        .from('vw_unmapped_products')
+        .select('*')
+        .limit(200);
 
       if (error) throw error;
       setUnverifiedProducts(data || []);
@@ -63,10 +60,10 @@ export default function CardTraderMapping() {
 
     try {
       const product = unverifiedProducts.find(p => p.id === productId);
-      const response = await supabase.functions.invoke('cardtrader-search', {
+      const response = await supabase.functions.invoke('tcg-search', {
         body: { 
           query: productName,
-          setName: product?.set_code 
+          setName: product?.set_code // Pass set code to improve matching
         }
       });
 
@@ -83,18 +80,17 @@ export default function CardTraderMapping() {
     }
   };
 
-  const handleVerifyMatch = async (result: CardTraderSearchResult) => {
+  const handleVerifyMatch = async (tcgResult: TCGSearchResult) => {
     if (!selectedProduct) return;
 
     const currentProduct = unverifiedProducts.find(p => p.id === selectedProduct);
     if (!currentProduct) return;
 
     try {
-      const response = await supabase.functions.invoke('admin-set-cardtrader-mapping', {
+      const response = await supabase.functions.invoke('admin-set-tcg-id', {
         body: { 
           productId: selectedProduct, 
-          blueprintId: result.blueprintId,
-          blueprintName: result.blueprintName
+          tcgId: tcgResult.productId 
         }
       });
 
@@ -103,14 +99,14 @@ export default function CardTraderMapping() {
       setUnverifiedProducts(prev => prev.filter(p => p.id !== selectedProduct));
       setVerifiedMapping({
         productName: currentProduct.name,
-        blueprintId: result.blueprintId
+        tcgId: tcgResult.productId
       });
       setSelectedProduct(null);
       setSearchResults([]);
 
       toast({
         title: "Success",
-        description: "CardTrader mapping saved!",
+        description: "TCGplayer mapping saved!",
       });
     } catch (error) {
       console.error('Error:', error);
@@ -124,7 +120,7 @@ export default function CardTraderMapping() {
   const handleAutoMapping = async () => {
     setAutoMapping(true);
     try {
-      const response = await supabase.functions.invoke('cardtrader-auto-mapping', {
+      const response = await supabase.functions.invoke('auto-tcg-mapping', {
         body: { limit: 20 }
       });
 
@@ -136,6 +132,7 @@ export default function CardTraderMapping() {
         description: `Mapped ${result.mapped} of ${result.processed} products`,
       });
 
+      // Refresh the list
       fetchUnverifiedProducts();
     } catch (error) {
       console.error('Error:', error);
@@ -151,14 +148,14 @@ export default function CardTraderMapping() {
   const handleFetchPrices = async () => {
     setFetchingPrices(true);
     try {
-      const response = await supabase.functions.invoke('cardtrader-fetch-prices');
+      const response = await supabase.functions.invoke('fetch-prices');
 
       if (response.error) throw response.error;
 
       const result = response.data;
       toast({
         title: "Price Fetch Complete",
-        description: `Updated prices for ${result.updated} products`,
+        description: `Updated prices for ${result.processed} products`,
       });
     } catch (error) {
       console.error('Error:', error);
@@ -183,9 +180,9 @@ export default function CardTraderMapping() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">CardTrader Mapping</h1>
+          <h1 className="text-3xl font-bold">TCGplayer Mapping</h1>
           <p className="text-muted-foreground">
-            Find and verify CardTrader product matches
+            Find and verify TCGplayer product matches using the official search API
           </p>
         </div>
         <div className="flex gap-3">
@@ -202,7 +199,7 @@ export default function CardTraderMapping() {
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                Auto Map 20 Products
+                Auto Map {Math.min(20, unverifiedProducts.length)} Products
               </>
             )}
           </Button>
@@ -230,33 +227,48 @@ export default function CardTraderMapping() {
         <Card>
           <CardHeader>
             <CardTitle>Unverified Products ({unverifiedProducts.length})</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Products from MTGJSON that need TCGplayer product ID mapping
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {unverifiedProducts.map((product) => (
-              <div key={product.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h3 className="font-semibold">{product.name}</h3>
-                    <div className="flex gap-2 mt-1">
-                      <Badge variant="secondary">{product.set_code}</Badge>
-                      <Badge variant="outline">{product.type}</Badge>
+            {unverifiedProducts.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">
+                  🎉 All products have been mapped to TCGplayer!
+                </p>
+              </div>
+            ) : (
+              unverifiedProducts.map((product) => (
+                <div key={product.id} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-semibold">{product.name}</h3>
+                      <div className="flex gap-2 mt-1">
+                        <Badge variant="secondary">{product.set_code}</Badge>
+                        <Badge variant="outline">{product.type}</Badge>
+                      </div>
                     </div>
                   </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleFindMatches(product.id, product.name)}
+                    disabled={searching && selectedProduct === product.id}
+                  >
+                    {searching && selectedProduct === product.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-2" />
+                        Find Matches
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => handleFindMatches(product.id, product.name)}
-                  disabled={searching}
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Find Matches
-                </Button>
-              </div>
-            ))}
-            {unverifiedProducts.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <p>All products have been verified!</p>
-              </div>
+              ))
             )}
           </CardContent>
         </Card>
@@ -264,31 +276,37 @@ export default function CardTraderMapping() {
         <Card>
           <CardHeader>
             <CardTitle>Search Results</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              TCGplayer matches found using their official API
+            </p>
           </CardHeader>
           <CardContent>
             {searching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Searching CardTrader...
+                Searching TCGplayer...
               </div>
             ) : searchResults.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                Select a product to see matches
-              </p>
+              <div className="text-center py-8">
+                <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  Select a product and click "Find Matches" to search TCGplayer
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {searchResults.map((result) => (
-                  <div key={result.blueprintId} className="border rounded-lg p-3">
+                  <div key={result.productId} className="border rounded-lg p-3">
                     <div className="flex justify-between items-center">
                       <div>
-                        <h4 className="font-medium">{result.blueprintName}</h4>
-                        <p className="text-sm text-muted-foreground">ID: {result.blueprintId}</p>
+                        <h4 className="font-medium">{result.productName}</h4>
+                        <p className="text-sm text-muted-foreground">TCG ID: {result.productId}</p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(result.cardtraderUrl, '_blank')}
+                          onClick={() => window.open(`https://www.tcgplayer.com/product/${result.productId}`, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4 mr-1" />
                           View
@@ -316,16 +334,16 @@ export default function CardTraderMapping() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-green-900">{verifiedMapping.productName}</h3>
-                <p className="text-sm text-green-700">Blueprint ID: {verifiedMapping.blueprintId}</p>
+                <p className="text-sm text-green-700">TCG ID: {verifiedMapping.tcgId}</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(`https://www.cardtrader.com/cards/${verifiedMapping.blueprintId}`, '_blank')}
+                onClick={() => window.open(`https://www.tcgplayer.com/product/${verifiedMapping.tcgId}`, '_blank')}
                 className="border-green-300 text-green-800 hover:bg-green-100"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                View on CardTrader
+                View on TCGplayer
               </Button>
             </div>
           </CardContent>

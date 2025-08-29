@@ -22,8 +22,8 @@ interface Product {
   type: string;
   release_date: string | null;
   language: string | null;
-  cardtrader_mapping_id: string | null;
-  cardtrader_is_verified: boolean;
+  tcgplayer_product_id: number | null;
+  tcg_is_verified: boolean;
   upc: string | null;
   upc_is_verified: boolean;
   active: boolean;
@@ -115,17 +115,17 @@ const ProductCatalog = () => {
     // Verification filter
     if (verificationFilter !== "all") {
       switch (verificationFilter) {
-        case "cardtrader_verified":
-          filtered = filtered.filter(product => product.cardtrader_is_verified);
+        case "tcg_verified":
+          filtered = filtered.filter(product => product.tcg_is_verified);
           break;
         case "upc_verified":
           filtered = filtered.filter(product => product.upc_is_verified);
           break;
         case "both_verified":
-          filtered = filtered.filter(product => product.cardtrader_is_verified && product.upc_is_verified);
+          filtered = filtered.filter(product => product.tcg_is_verified && product.upc_is_verified);
           break;
         case "none_verified":
-          filtered = filtered.filter(product => !product.cardtrader_is_verified && !product.upc_is_verified);
+          filtered = filtered.filter(product => !product.tcg_is_verified && !product.upc_is_verified);
           break;
       }
     }
@@ -188,9 +188,9 @@ const ProductCatalog = () => {
       )
     },
     { 
-      field: "cardtrader_is_verified", 
-      headerName: "CardTrader", 
-      width: 100,
+      field: "tcg_is_verified", 
+      headerName: "TCG", 
+      width: 80,
       sortable: true,
       filter: false,
       cellRenderer: (params: any) => (
@@ -351,7 +351,7 @@ const ProductCatalog = () => {
               </SelectTrigger>
               <SelectContent className="bg-popover border border-border shadow-lg z-50">
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="cardtrader_verified">CardTrader Verified</SelectItem>
+                <SelectItem value="tcg_verified">TCG Verified</SelectItem>
                 <SelectItem value="upc_verified">UPC Verified</SelectItem>
                 <SelectItem value="both_verified">Both Verified</SelectItem>
                 <SelectItem value="none_verified">Not Verified</SelectItem>
@@ -491,13 +491,13 @@ const ProductCatalog = () => {
                   <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Verification Status</h4>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">CardTrader Mapping</span>
+                      <span className="text-sm font-medium">TCGplayer ID</span>
                       <div className="flex items-center space-x-2">
-                        {selectedProduct.cardtrader_mapping_id && (
-                          <span className="text-sm">Mapped</span>
+                        {selectedProduct.tcgplayer_product_id && (
+                          <span className="text-sm">{selectedProduct.tcgplayer_product_id}</span>
                         )}
-                        <Badge variant={selectedProduct.cardtrader_is_verified ? "default" : "secondary"}>
-                          {selectedProduct.cardtrader_is_verified ? "✓" : "—"}
+                        <Badge variant={selectedProduct.tcg_is_verified ? "default" : "secondary"}>
+                          {selectedProduct.tcg_is_verified ? "✓" : "—"}
                         </Badge>
                       </div>
                     </div>
@@ -552,15 +552,15 @@ const ProductCatalog = () => {
                       <ExternalLink className="h-4 w-4 mr-2" />
                       View Full Details
                     </Button>
-                    {selectedProduct.cardtrader_mapping_id && (
+                    {selectedProduct.tcgplayer_product_id && (
                       <Button 
                         variant="outline" 
                         size="sm" 
                         className="w-full"
-                        onClick={() => navigate(`/admin/mapping/cardtrader`)}
+                        onClick={() => window.open(`https://www.tcgplayer.com/product/${selectedProduct.tcgplayer_product_id}`, '_blank')}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        CardTrader Mapping
+                        TCGplayer Page
                       </Button>
                     )}
                   </div>
