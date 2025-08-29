@@ -36,9 +36,11 @@ export default function TCGMapping() {
   const fetchUnverifiedProducts = async () => {
     try {
       const { data, error } = await supabase
-        .from('vw_unmapped_products')
-        .select('*')
-        .limit(200);
+        .from('products')
+        .select('id, name, set_code, type')
+        .eq('tcg_is_verified', false)
+        .eq('active', true)
+        .order('name');
 
       if (error) throw error;
       setUnverifiedProducts(data || []);
@@ -182,7 +184,7 @@ export default function TCGMapping() {
         <div>
           <h1 className="text-3xl font-bold">TCGplayer Mapping</h1>
           <p className="text-muted-foreground">
-            Find and verify TCGplayer product matches using the official search API
+            Find and verify TCGplayer product matches
           </p>
         </div>
         <div className="flex gap-3">
@@ -199,7 +201,7 @@ export default function TCGMapping() {
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                Auto Map {Math.min(20, unverifiedProducts.length)} Products
+                Auto Map 20 Products
               </>
             )}
           </Button>
@@ -227,72 +229,46 @@ export default function TCGMapping() {
         <Card>
           <CardHeader>
             <CardTitle>Unverified Products ({unverifiedProducts.length})</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Products from MTGJSON that need TCGplayer product ID mapping
-            </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {unverifiedProducts.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  🎉 All products have been mapped to TCGplayer!
-                </p>
-              </div>
-            ) : (
-              unverifiedProducts.map((product) => (
-                <div key={product.id} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-semibold">{product.name}</h3>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="secondary">{product.set_code}</Badge>
-                        <Badge variant="outline">{product.type}</Badge>
-                      </div>
+            {unverifiedProducts.map((product) => (
+              <div key={product.id} className="border rounded-lg p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="font-semibold">{product.name}</h3>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="secondary">{product.set_code}</Badge>
+                      <Badge variant="outline">{product.type}</Badge>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handleFindMatches(product.id, product.name)}
-                    disabled={searching && selectedProduct === product.id}
-                  >
-                    {searching && selectedProduct === product.id ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Searching...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="h-4 w-4 mr-2" />
-                        Find Matches
-                      </>
-                    )}
-                  </Button>
                 </div>
-              ))
-            )}
+                <Button
+                  size="sm"
+                  onClick={() => handleFindMatches(product.id, product.name)}
+                  disabled={searching}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Find Matches
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle>Search Results</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              TCGplayer matches found using their official API
-            </p>
           </CardHeader>
           <CardContent>
             {searching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Searching TCGplayer...
+                Searching...
               </div>
             ) : searchResults.length === 0 ? (
-              <div className="text-center py-8">
-                <Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
-                  Select a product and click "Find Matches" to search TCGplayer
-                </p>
-              </div>
+              <p className="text-muted-foreground text-center py-8">
+                Select a product to see matches
+              </p>
             ) : (
               <div className="space-y-3">
                 {searchResults.map((result) => (
@@ -300,7 +276,7 @@ export default function TCGMapping() {
                     <div className="flex justify-between items-center">
                       <div>
                         <h4 className="font-medium">{result.productName}</h4>
-                        <p className="text-sm text-muted-foreground">TCG ID: {result.productId}</p>
+                        <p className="text-sm text-muted-foreground">ID: {result.productId}</p>
                       </div>
                       <div className="flex gap-2">
                         <Button
