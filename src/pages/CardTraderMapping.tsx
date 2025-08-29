@@ -13,20 +13,21 @@ interface Product {
   type: string;
 }
 
-interface TCGSearchResult {
-  productId: number;
-  productName: string;
+interface CardTraderSearchResult {
+  blueprintId: number;
+  blueprintName: string;
+  cardtraderUrl: string;
 }
 
-export default function TCGMapping() {
+export default function CardTraderMapping() {
   const [unverifiedProducts, setUnverifiedProducts] = useState<Product[]>([]);
-  const [searchResults, setSearchResults] = useState<TCGSearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<CardTraderSearchResult[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [autoMapping, setAutoMapping] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
-  const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
+  const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, blueprintId: number} | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function TCGMapping() {
       const { data, error } = await supabase
         .from('products')
         .select('id, name, set_code, type')
-        .eq('tcg_is_verified', false)
+        .eq('cardtrader_is_verified', false)
         .eq('active', true)
         .order('name');
 
@@ -62,10 +63,10 @@ export default function TCGMapping() {
 
     try {
       const product = unverifiedProducts.find(p => p.id === productId);
-      const response = await supabase.functions.invoke('tcg-search', {
+      const response = await supabase.functions.invoke('cardtrader-search', {
         body: { 
           query: productName,
-          setName: product?.set_code // Pass set code to improve matching
+          setName: product?.set_code 
         }
       });
 
@@ -82,17 +83,18 @@ export default function TCGMapping() {
     }
   };
 
-  const handleVerifyMatch = async (tcgResult: TCGSearchResult) => {
+  const handleVerifyMatch = async (result: CardTraderSearchResult) => {
     if (!selectedProduct) return;
 
     const currentProduct = unverifiedProducts.find(p => p.id === selectedProduct);
     if (!currentProduct) return;
 
     try {
-      const response = await supabase.functions.invoke('admin-set-tcg-id', {
+      const response = await supabase.functions.invoke('admin-set-cardtrader-mapping', {
         body: { 
           productId: selectedProduct, 
-          tcgId: tcgResult.productId 
+          blueprintId: result.blueprintId,
+          blueprintName: result.blueprintName
         }
       });
 
@@ -101,14 +103,14 @@ export default function TCGMapping() {
       setUnverifiedProducts(prev => prev.filter(p => p.id !== selectedProduct));
       setVerifiedMapping({
         productName: currentProduct.name,
-        tcgId: tcgResult.productId
+        blueprintId: result.blueprintId
       });
       setSelectedProduct(null);
       setSearchResults([]);
 
       toast({
         title: "Success",
-        description: "TCGplayer mapping saved!",
+        description: "CardTrader mapping saved!",
       });
     } catch (error) {
       console.error('Error:', error);
@@ -122,7 +124,7 @@ export default function TCGMapping() {
   const handleAutoMapping = async () => {
     setAutoMapping(true);
     try {
-      const response = await supabase.functions.invoke('auto-tcg-mapping', {
+      const response = await supabase.functions.invoke('cardtrader-auto-mapping', {
         body: { limit: 20 }
       });
 
@@ -134,7 +136,6 @@ export default function TCGMapping() {
         description: `Mapped ${result.mapped} of ${result.processed} products`,
       });
 
-      // Refresh the list
       fetchUnverifiedProducts();
     } catch (error) {
       console.error('Error:', error);
@@ -150,14 +151,14 @@ export default function TCGMapping() {
   const handleFetchPrices = async () => {
     setFetchingPrices(true);
     try {
-      const response = await supabase.functions.invoke('fetch-prices');
+      const response = await supabase.functions.invoke('cardtrader-fetch-prices');
 
       if (response.error) throw response.error;
 
       const result = response.data;
       toast({
         title: "Price Fetch Complete",
-        description: `Updated prices for ${result.processed} products`,
+        description: `Updated prices for ${result.updated} products`,
       });
     } catch (error) {
       console.error('Error:', error);
@@ -182,9 +183,9 @@ export default function TCGMapping() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">TCGplayer Mapping</h1>
+          <h1 className="text-3xl font-bold">CardTrader Mapping</h1>
           <p className="text-muted-foreground">
-            Find and verify TCGplayer product matches
+            Find and verify CardTrader product matches
           </p>
         </div>
         <div className="flex gap-3">
@@ -252,6 +253,11 @@ export default function TCGMapping() {
                 </Button>
               </div>
             ))}
+            {unverifiedProducts.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                <p>All products have been verified!</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -263,7 +269,7 @@ export default function TCGMapping() {
             {searching ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Searching...
+                Searching CardTrader...
               </div>
             ) : searchResults.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
@@ -272,17 +278,17 @@ export default function TCGMapping() {
             ) : (
               <div className="space-y-3">
                 {searchResults.map((result) => (
-                  <div key={result.productId} className="border rounded-lg p-3">
+                  <div key={result.blueprintId} className="border rounded-lg p-3">
                     <div className="flex justify-between items-center">
                       <div>
-                        <h4 className="font-medium">{result.productName}</h4>
-                        <p className="text-sm text-muted-foreground">ID: {result.productId}</p>
+                        <h4 className="font-medium">{result.blueprintName}</h4>
+                        <p className="text-sm text-muted-foreground">ID: {result.blueprintId}</p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(`https://www.tcgplayer.com/product/${result.productId}`, '_blank')}
+                          onClick={() => window.open(result.cardtraderUrl, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4 mr-1" />
                           View
@@ -310,16 +316,16 @@ export default function TCGMapping() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-green-900">{verifiedMapping.productName}</h3>
-                <p className="text-sm text-green-700">TCG ID: {verifiedMapping.tcgId}</p>
+                <p className="text-sm text-green-700">Blueprint ID: {verifiedMapping.blueprintId}</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(`https://www.tcgplayer.com/product/${verifiedMapping.tcgId}`, '_blank')}
+                onClick={() => window.open(`https://www.cardtrader.com/cards/${verifiedMapping.blueprintId}`, '_blank')}
                 className="border-green-300 text-green-800 hover:bg-green-100"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                View on TCGplayer
+                View on CardTrader
               </Button>
             </div>
           </CardContent>

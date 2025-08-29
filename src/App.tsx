@@ -13,7 +13,7 @@ import Login from "./pages/Login";
 import Auth from "./pages/Auth";
 import ProductDetail from "./pages/ProductDetail";
 import ProductCatalog from "./pages/ProductCatalog";
-import TCGMapping from "./pages/TCGMapping";
+import CardTraderMapping from "./pages/CardTraderMapping";
 import UPCMapping from "./pages/UPCMapping";
 import ImportStatus from "./pages/ImportStatus";
 import NotFound from "./pages/NotFound";
@@ -36,7 +36,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><DashboardLayout><Dashboard /></DashboardLayout></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute><DashboardLayout><ProductCatalog /></DashboardLayout></ProtectedRoute>} />
             <Route path="/products/:id" element={<ProtectedRoute><DashboardLayout><ProductDetail /></DashboardLayout></ProtectedRoute>} />
-            <Route path="/admin/mapping/tcg" element={<ProtectedRoute><DashboardLayout><TCGMapping /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/admin/mapping/tcg" element={<ProtectedRoute><DashboardLayout><CardTraderMapping /></DashboardLayout></ProtectedRoute>} />
             <Route path="/admin/mapping/upc" element={<ProtectedRoute><DashboardLayout><UPCMapping /></DashboardLayout></ProtectedRoute>} />
             <Route path="/admin/imports" element={<ProtectedRoute><DashboardLayout><ImportStatus /></DashboardLayout></ProtectedRoute>} />
             
