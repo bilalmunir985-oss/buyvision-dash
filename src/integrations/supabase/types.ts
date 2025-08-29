@@ -286,6 +286,8 @@ export type Database = {
       products: {
         Row: {
           active: boolean
+          cardtrader_is_verified: boolean
+          cardtrader_mapping_id: string | null
           created_at: string
           id: string
           language: string | null
@@ -294,8 +296,6 @@ export type Database = {
           raw_json: Json | null
           release_date: string | null
           set_code: string | null
-          tcg_is_verified: boolean
-          tcgplayer_product_id: number | null
           type: string
           upc: string | null
           upc_is_verified: boolean
@@ -303,6 +303,8 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          cardtrader_is_verified?: boolean
+          cardtrader_mapping_id?: string | null
           created_at?: string
           id?: string
           language?: string | null
@@ -311,8 +313,6 @@ export type Database = {
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
-          tcg_is_verified?: boolean
-          tcgplayer_product_id?: number | null
           type: string
           upc?: string | null
           upc_is_verified?: boolean
@@ -320,6 +320,8 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          cardtrader_is_verified?: boolean
+          cardtrader_mapping_id?: string | null
           created_at?: string
           id?: string
           language?: string | null
@@ -328,14 +330,20 @@ export type Database = {
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
-          tcg_is_verified?: boolean
-          tcgplayer_product_id?: number | null
           type?: string
           upc?: string | null
           upc_is_verified?: boolean
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_cardtrader_mapping_id_fkey"
+            columns: ["cardtrader_mapping_id"]
+            isOneToOne: false
+            referencedRelation: "product_mappings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       upc_candidates: {
         Row: {
