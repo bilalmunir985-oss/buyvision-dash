@@ -104,13 +104,14 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
-          is_tcgverified: boolean | null
           language: string | null
           mtgjson_uuid: string
           name: string
           raw_json: Json | null
           release_date: string | null
           set_code: string | null
+          tcg_is_verified: boolean
+          tcgplayer_product_id: number | null
           type: string
           upc: string | null
           upc_is_verified: boolean
@@ -120,13 +121,14 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          is_tcgverified?: boolean | null
           language?: string | null
           mtgjson_uuid: string
           name: string
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
+          tcg_is_verified?: boolean
+          tcgplayer_product_id?: number | null
           type: string
           upc?: string | null
           upc_is_verified?: boolean
@@ -136,13 +138,14 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          is_tcgverified?: boolean | null
           language?: string | null
           mtgjson_uuid?: string
           name?: string
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
+          tcg_is_verified?: boolean
+          tcgplayer_product_id?: number | null
           type?: string
           upc?: string | null
           upc_is_verified?: boolean
