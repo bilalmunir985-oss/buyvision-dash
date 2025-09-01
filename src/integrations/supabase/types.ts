@@ -62,13 +62,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "daily_metrics_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "vw_unmapped_products"
-            referencedColumns: ["id"]
-          },
         ]
       }
       product_contents: {
@@ -104,13 +97,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "product_contents_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "vw_unmapped_products"
-            referencedColumns: ["id"]
-          },
         ]
       }
       products: {
@@ -118,14 +104,13 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          is_tcgverified: boolean | null
           language: string | null
           mtgjson_uuid: string
           name: string
           raw_json: Json | null
           release_date: string | null
           set_code: string | null
-          tcg_is_verified: boolean
-          tcgplayer_product_id: number | null
           type: string
           upc: string | null
           upc_is_verified: boolean
@@ -135,14 +120,13 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          is_tcgverified?: boolean | null
           language?: string | null
           mtgjson_uuid: string
           name: string
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
-          tcg_is_verified?: boolean
-          tcgplayer_product_id?: number | null
           type: string
           upc?: string | null
           upc_is_verified?: boolean
@@ -152,14 +136,13 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          is_tcgverified?: boolean | null
           language?: string | null
           mtgjson_uuid?: string
           name?: string
           raw_json?: Json | null
           release_date?: string | null
           set_code?: string | null
-          tcg_is_verified?: boolean
-          tcgplayer_product_id?: number | null
           type?: string
           upc?: string | null
           upc_is_verified?: boolean
@@ -200,38 +183,11 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "upc_candidates_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "vw_unmapped_products"
-            referencedColumns: ["id"]
-          },
         ]
       }
     }
     Views: {
-      vw_unmapped_products: {
-        Row: {
-          id: string | null
-          name: string | null
-          set_code: string | null
-          type: string | null
-        }
-        Insert: {
-          id?: string | null
-          name?: string | null
-          set_code?: string | null
-          type?: string | null
-        }
-        Update: {
-          id?: string | null
-          name?: string | null
-          set_code?: string | null
-          type?: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       import_mtgjson_products: {

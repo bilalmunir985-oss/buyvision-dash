@@ -22,6 +22,7 @@ interface Product {
   type: string;
   release_date: string | null;
   language: string | null;
+  mtgjson_uuid: string;
   tcgplayer_product_id: number | null;
   tcg_is_verified: boolean;
   upc: string | null;
