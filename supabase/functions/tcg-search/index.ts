@@ -22,23 +22,19 @@ async function searchTCG(query: string, setName?: string) {
   // Build search query - include set name if provided
   const searchQuery = setName ? `${query} ${setName}` : query;
   
-  const payload = {
-    sort: "productName",
-    limit: 10,
-    filters: {
-      productLineName: "magic",
-      categoryName: "Sealed Products"
-    },
-    query: searchQuery
-  };
+  const sessionId = generateSessionId();
+  const url = new URL(AUTOCOMPLETE_URL);
+  url.searchParams.set('q', searchQuery);
+  url.searchParams.set('session-id', sessionId);
+  url.searchParams.set('product-line-affinity', 'All');
+  url.searchParams.set('algorithm', 'product_line_affinity');
 
-  console.log('Searching TCGplayer for:', searchQuery);
-  console.log('Payload:', JSON.stringify(payload, null, 2));
+  console.log('Searching TCGplayer autocomplete for:', searchQuery);
+  console.log('URL:', url.toString());
   
-  const response = await fetch(SEARCH_URL, { 
-    method: 'POST', 
-    headers: headers(), 
-    body: JSON.stringify(payload) 
+  const response = await fetch(url.toString(), { 
+    method: 'GET', 
+    headers: headers()
   });
   
   console.log('Response status:', response.status);
@@ -62,10 +58,13 @@ async function searchTCG(query: string, setName?: string) {
   const results = Array.isArray(json?.results) ? json.results : [];
   console.log('Found', results.length, 'results');
   
-  const mappedResults = results.map((item: any) => ({ 
-    productId: item.productId, 
-    productName: item.productName
-  })).filter(r => r.productId && r.productName);
+  const mappedResults = results
+    .filter((item: any) => item.productId && item.productName)
+    .map((item: any) => ({ 
+      productId: item.productId, 
+      productName: item.productName
+    }))
+    .slice(0, 10); // Limit to 10 results
   
   console.log('Returning', mappedResults.length, 'valid results');
   return mappedResults;

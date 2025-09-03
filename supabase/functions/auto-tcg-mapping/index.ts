@@ -5,39 +5,40 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
+const AUTOCOMPLETE_URL = 'https://data.tcgplayer.com/autocomplete';
 
 function tcgHeaders() {
   return {
-    'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'Origin': 'https://www.tcgplayer.com',
-    'Referer': 'https://www.tcgplayer.com/',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   };
+}
+
+function generateSessionId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 async function searchTCGProduct(productName: string, setName?: string) {
   // Build search query - include set name if provided for better matching
   const searchQuery = setName ? `${productName} ${setName}` : productName;
   
-  const payload = {
-    sort: "productName",
-    limit: 10,
-    filters: {
-      productLineName: "magic",
-      categoryName: "Sealed Products"
-    },
-    query: searchQuery
-  };
+  const sessionId = generateSessionId();
+  const url = new URL(AUTOCOMPLETE_URL);
+  url.searchParams.set('q', searchQuery);
+  url.searchParams.set('session-id', sessionId);
+  url.searchParams.set('product-line-affinity', 'All');
+  url.searchParams.set('algorithm', 'product_line_affinity');
 
   console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
-  console.log('Payload:', JSON.stringify(payload, null, 2));
+  console.log('URL:', url.toString());
   
-  const response = await fetch(SEARCH_URL, { 
-    method: 'POST', 
-    headers: tcgHeaders(), 
-    body: JSON.stringify(payload) 
+  const response = await fetch(url.toString(), { 
+    method: 'GET', 
+    headers: tcgHeaders()
   });
   
   console.log('Response status:', response.status);
