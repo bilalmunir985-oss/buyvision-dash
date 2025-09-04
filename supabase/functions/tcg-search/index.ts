@@ -6,7 +6,15 @@ const cors = {
   'Content-Type': 'application/json'
 };
 
-const SEARCH_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request';
+const AUTOCOMPLETE_URL = 'https://data.tcgplayer.com/autocomplete';
+
+function generateSessionId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 function headers() {
   return {
@@ -26,7 +34,7 @@ async function searchTCG(query: string, setName?: string) {
   const url = new URL(AUTOCOMPLETE_URL);
   url.searchParams.set('q', searchQuery);
   url.searchParams.set('session-id', sessionId);
-  url.searchParams.set('product-line-affinity', 'All');
+  url.searchParams.set('product-line-affinity', 'Magic: The Gathering');
   url.searchParams.set('algorithm', 'product_line_affinity');
 
   console.log('Searching TCGplayer autocomplete for:', searchQuery);

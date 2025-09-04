@@ -30,7 +30,7 @@ async function searchTCGProduct(productName: string, setName?: string) {
   const url = new URL(AUTOCOMPLETE_URL);
   url.searchParams.set('q', searchQuery);
   url.searchParams.set('session-id', sessionId);
-  url.searchParams.set('product-line-affinity', 'All');
+  url.searchParams.set('product-line-affinity', 'Magic: The Gathering');
   url.searchParams.set('algorithm', 'product_line_affinity');
 
   console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
