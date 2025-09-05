@@ -30,7 +30,7 @@ async function searchTCGProduct(productName: string, setName?: string) {
   const url = new URL(AUTOCOMPLETE_URL);
   url.searchParams.set('q', searchQuery);
   url.searchParams.set('session-id', sessionId);
-  url.searchParams.set('product-line-affinity', 'Magic: The Gathering');
+  url.searchParams.set('product-line-affinity', 'All');
   url.searchParams.set('algorithm', 'product_line_affinity');
 
   console.log(`Searching for: ${productName} (Set: ${setName || 'N/A'})`);
@@ -50,17 +50,20 @@ async function searchTCGProduct(productName: string, setName?: string) {
   
   const json = await response.json();
   console.log('Response keys:', Object.keys(json));
-  console.log('Results found:', json.results?.length || 0);
+  console.log('Products found:', json.products?.length || 0);
   
-  if (!Array.isArray(json.results)) {
-    console.log('No results array found in response');
+  if (!Array.isArray(json.products)) {
+    console.log('No products array found in response');
     return [];
   }
   
-  return json.results.map((item: any) => ({ 
-    productId: item.productId, 
-    productName: item.productName
-  })).filter((r: any) => r.productId && r.productName);
+  // Filter for Magic: The Gathering products only and map to expected format
+  return json.products
+    .filter((item: any) => item['product-line-name'] === 'Magic: The Gathering' && item['product-id'] && item['product-name'])
+    .map((item: any) => ({ 
+      productId: item['product-id'], 
+      productName: item['product-name']
+    }));
 }
 
 async function sleep(ms: number) {

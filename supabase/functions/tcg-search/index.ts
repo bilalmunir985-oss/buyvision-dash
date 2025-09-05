@@ -34,7 +34,7 @@ async function searchTCG(query: string, setName?: string) {
   const url = new URL(AUTOCOMPLETE_URL);
   url.searchParams.set('q', searchQuery);
   url.searchParams.set('session-id', sessionId);
-  url.searchParams.set('product-line-affinity', 'Magic: The Gathering');
+  url.searchParams.set('product-line-affinity', 'All');
   url.searchParams.set('algorithm', 'product_line_affinity');
 
   console.log('Searching TCGplayer autocomplete for:', searchQuery);
@@ -61,20 +61,21 @@ async function searchTCG(query: string, setName?: string) {
   }
   
   console.log('Response data keys:', Object.keys(json));
-  console.log('Results length:', json.results?.length || 0);
+  console.log('Products found:', json.products?.length || 0);
   
-  const results = Array.isArray(json?.results) ? json.results : [];
-  console.log('Found', results.length, 'results');
+  const products = Array.isArray(json?.products) ? json.products : [];
+  console.log('Found', products.length, 'products');
   
-  const mappedResults = results
-    .filter((item: any) => item.productId && item.productName)
+  // Filter for Magic: The Gathering products only and map to expected format
+  const mappedResults = products
+    .filter((item: any) => item['product-line-name'] === 'Magic: The Gathering' && item['product-id'] && item['product-name'])
     .map((item: any) => ({ 
-      productId: item.productId, 
-      productName: item.productName
+      productId: item['product-id'], 
+      productName: item['product-name']
     }))
     .slice(0, 10); // Limit to 10 results
   
-  console.log('Returning', mappedResults.length, 'valid results');
+  console.log('Returning', mappedResults.length, 'valid Magic products');
   return mappedResults;
 }
 
