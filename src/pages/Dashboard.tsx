@@ -57,6 +57,7 @@ export default function Dashboard() {
     highPriced: 0
   });
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  const [priceResponseData, setPriceResponseData] = useState<any[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -301,6 +302,11 @@ export default function Dashboard() {
       }
 
       console.log('Price fetch result:', data);
+      
+      // Store the detailed response data for display
+      if (data.priceData) {
+        setPriceResponseData(data.priceData);
+      }
       
       toast({
         title: "Price fetch completed",
@@ -674,6 +680,96 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Price Response Data Table */}
+      {priceResponseData.length > 0 && (
+        <Card className="shadow-sm border-border/40">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Latest Pricing Data from TCGPlayer
+            </CardTitle>
+            <CardDescription>
+              Real-time pricing information fetched for TCG verified products
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-border">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="border border-border p-2 text-left font-medium">Product Name</th>
+                    <th className="border border-border p-2 text-left font-medium">TCG ID</th>
+                    <th className="border border-border p-2 text-left font-medium">Lowest Price</th>
+                    <th className="border border-border p-2 text-left font-medium">Market Price</th>
+                    <th className="border border-border p-2 text-left font-medium">Median Price</th>
+                    <th className="border border-border p-2 text-left font-medium">Sellers</th>
+                    <th className="border border-border p-2 text-left font-medium">Listings</th>
+                    <th className="border border-border p-2 text-left font-medium">Set</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceResponseData.map((item, index) => (
+                    <tr key={index} className="hover:bg-muted/30">
+                      <td className="border border-border p-2 font-medium">{item.productName || 'N/A'}</td>
+                      <td className="border border-border p-2">
+                        <Badge variant="outline" className="font-mono">
+                          {item.productId || item.tcgplayerId || 'N/A'}
+                        </Badge>
+                      </td>
+                      <td className="border border-border p-2">
+                        {item.lowestPrice ? (
+                          <div className="flex items-center gap-1 text-success font-medium">
+                            <DollarSign className="h-3 w-3" />
+                            {typeof item.lowestPrice === 'number' ? item.lowestPrice.toFixed(2) : item.lowestPrice}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </td>
+                      <td className="border border-border p-2">
+                        {item.marketPrice ? (
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-muted-foreground" />
+                            {typeof item.marketPrice === 'number' ? item.marketPrice.toFixed(2) : item.marketPrice}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </td>
+                      <td className="border border-border p-2">
+                        {item.medianPrice ? (
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-muted-foreground" />
+                            {typeof item.medianPrice === 'number' ? item.medianPrice.toFixed(2) : item.medianPrice}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </td>
+                      <td className="border border-border p-2">
+                        <Badge variant="secondary">
+                          {item.sellers || 0}
+                        </Badge>
+                      </td>
+                      <td className="border border-border p-2">
+                        <Badge variant="outline">
+                          {item.listings || 0}
+                        </Badge>
+                      </td>
+                      <td className="border border-border p-2">
+                        <Badge variant="secondary" className="font-mono">
+                          {item.setCode || 'N/A'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

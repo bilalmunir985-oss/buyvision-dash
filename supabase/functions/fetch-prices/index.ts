@@ -212,6 +212,7 @@ Deno.serve(async (req) => {
     let processed = 0;
     let errors = 0;
     const today = new Date().toISOString().split('T')[0];
+    const collectedPriceData: any[] = [];
 
     for (const product of products) {
       try {
@@ -253,6 +254,21 @@ Deno.serve(async (req) => {
           errors++;
         } else {
           processed++;
+          
+          // Store pricing data for UI display
+          collectedPriceData.push({
+            productName: product.name,
+            productId: product.tcgplayer_product_id,
+            tcgplayerId: product.tcgplayer_product_id,
+            lowestPrice: priceData.lowest_total_price,
+            marketPrice: priceData.lowest_item_price,
+            medianPrice: null, // We don't calculate median in current implementation
+            sellers: null, // Not available in current API
+            listings: priceData.num_listings,
+            setCode: null, // We don't have set info in this context
+            targetCost: target_product_cost,
+            maxCost: max_product_cost
+          });
         }
 
         // Rate limiting - sleep between requests
@@ -271,6 +287,7 @@ Deno.serve(async (req) => {
         processed,
         errors,
         total: products.length,
+        priceData: collectedPriceData
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
