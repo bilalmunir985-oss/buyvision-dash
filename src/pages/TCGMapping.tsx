@@ -14,8 +14,10 @@ interface Product {
 }
 
 interface TCGSearchResult {
-  productId: number;
-  productName: string;
+  id: number;
+  name: string;
+  set?: string;
+  urlName?: string;
 }
 
 export default function TCGMapping() {
@@ -70,7 +72,9 @@ export default function TCGMapping() {
       });
 
       if (response.error) throw response.error;
-      setSearchResults(response.data?.results || []);
+      
+      console.log('TCG Search Response:', response.data);
+      setSearchResults(response.data?.products || []);
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -92,7 +96,7 @@ export default function TCGMapping() {
       const response = await supabase.functions.invoke('admin-set-tcg-id', {
         body: { 
           productId: selectedProduct, 
-          tcgId: tcgResult.productId 
+          tcgId: tcgResult.id 
         }
       });
 
@@ -101,7 +105,7 @@ export default function TCGMapping() {
       setUnverifiedProducts(prev => prev.filter(p => p.id !== selectedProduct));
       setVerifiedMapping({
         productName: currentProduct.name,
-        tcgId: tcgResult.productId
+        tcgId: tcgResult.id
       });
       setSelectedProduct(null);
       setSearchResults([]);
@@ -272,17 +276,31 @@ export default function TCGMapping() {
             ) : (
               <div className="space-y-3">
                 {searchResults.map((result) => (
-                  <div key={result.productId} className="border rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium">{result.productName}</h4>
-                        <p className="text-sm text-muted-foreground">ID: {result.productId}</p>
+                  <div key={result.id} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-base mb-1">{result.name}</h4>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">
+                            <span className="font-medium">TCG Product ID:</span> {result.id}
+                          </p>
+                          {result.set && (
+                            <p className="text-sm text-muted-foreground">
+                              <span className="font-medium">Set:</span> {result.set}
+                            </p>
+                          )}
+                          {result.urlName && (
+                            <p className="text-sm text-muted-foreground">
+                              <span className="font-medium">URL Name:</span> {result.urlName}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 ml-4">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(`https://www.tcgplayer.com/product/${result.productId}`, '_blank')}
+                          onClick={() => window.open(`https://www.tcgplayer.com/product/${result.id}`, '_blank')}
                         >
                           <ExternalLink className="h-4 w-4 mr-1" />
                           View
