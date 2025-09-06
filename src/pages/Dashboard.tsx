@@ -36,6 +36,11 @@ interface DashboardRow {
   target_product_cost: number | null;
   max_product_cost: number | null;
   profit_margin?: number | null;
+  // Additional fields from fetch prices
+  market_price?: number | null;
+  num_listings?: number | null;
+  product_url?: string;
+  tcgplayer_id?: number;
 }
 
 export default function Dashboard() {
@@ -58,6 +63,17 @@ export default function Dashboard() {
   });
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceResponseData, setPriceResponseData] = useState<any[]>([]);
+  const [hasFetchPricesData, setHasFetchPricesData] = useState(() => {
+    // Check if we have fetch prices data in localStorage
+    const storedData = localStorage.getItem('fetchPricesData');
+    return !!storedData;
+  });
+  
+  // Debug: Log when priceResponseData changes
+  useEffect(() => {
+    console.log('priceResponseData updated:', priceResponseData);
+    console.log('priceResponseData length:', priceResponseData.length);
+  }, [priceResponseData]);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -156,10 +172,26 @@ export default function Dashboard() {
     },
     {
       field: 'lowest_total_price',
-      headerName: 'Market Price',
+      headerName: 'Lowest Price',
       width: 140,
       cellRenderer: (params: any) => <PriceCell value={params.value} type="market" />,
       sort: 'desc',
+    },
+    {
+      field: 'market_price',
+      headerName: 'Market Price',
+      width: 140,
+      cellRenderer: (params: any) => <PriceCell value={params.value} type="market" />,
+    },
+    {
+      field: 'num_listings',
+      headerName: 'Listings',
+      width: 100,
+      cellRenderer: (params: any) => (
+        <Badge variant="outline">
+          {params.value || 0}
+        </Badge>
+      ),
     },
     {
       field: 'target_product_cost',
@@ -200,8 +232,47 @@ export default function Dashboard() {
     }
   ], [navigate]);
 
+  // Load stored fetch prices data on component mount
   useEffect(() => {
-    fetchDashboardData();
+    const loadInitialData = async () => {
+      setLoading(true);
+      
+      const storedData = localStorage.getItem('fetchPricesData');
+      const storedRowData = localStorage.getItem('fetchPricesRowData');
+      
+      console.log('Checking localStorage on mount:');
+      console.log('storedData exists:', !!storedData);
+      console.log('storedRowData exists:', !!storedRowData);
+      
+      if (storedData && storedRowData) {
+        try {
+          const parsedData = JSON.parse(storedData);
+          const parsedRowData = JSON.parse(storedRowData);
+          
+          setPriceResponseData(parsedData);
+          setRowData(parsedRowData);
+          setFilteredData(parsedRowData);
+          setHasFetchPricesData(true);
+          
+          console.log('Loaded stored fetch prices data:', parsedData);
+        } catch (error) {
+          console.error('Error parsing stored fetch prices data:', error);
+          // Clear corrupted data
+          localStorage.removeItem('fetchPricesData');
+          localStorage.removeItem('fetchPricesRowData');
+          setHasFetchPricesData(false);
+          // Load daily metrics as fallback
+          await fetchDashboardData();
+        }
+      } else {
+        // No stored data, load daily metrics
+        await fetchDashboardData();
+      }
+      
+      setLoading(false);
+    };
+    
+    loadInitialData();
   }, []);
 
   // Get unique values for filters
@@ -280,6 +351,19 @@ export default function Dashboard() {
   const hasActiveFilters = searchQuery.trim() || selectedType !== 'all' || selectedSetCode !== 'all' || 
     priceRange.min || priceRange.max || marginRange.min || marginRange.max;
 
+  const clearStoredData = async () => {
+    setLoading(true);
+    localStorage.removeItem('fetchPricesData');
+    localStorage.removeItem('fetchPricesRowData');
+    setHasFetchPricesData(false);
+    setPriceResponseData([]);
+    setRowData([]);
+    setFilteredData([]);
+    // Reload daily metrics data
+    await fetchDashboardData();
+    setLoading(false);
+  };
+
   const fetchPrices = async () => {
     try {
       setIsFetchingPrices(true);
@@ -302,19 +386,24 @@ export default function Dashboard() {
       }
 
       console.log('Price fetch result:', data);
+      console.log('Prices array:', data.prices);
+      console.log('Prices length:', data.prices?.length);
       
       // Store the detailed response data for display
-      if (data.priceData) {
-        setPriceResponseData(data.priceData);
+      if (data.prices) {
+        console.log('Setting price response data:', data.prices);
+        setPriceResponseData(data.prices);
+        
+        // Transform fetch prices data to DashboardRow format and update the main table
+        await updateDashboardWithFetchPricesData(data.prices);
+      } else {
+        console.log('No prices found in response');
       }
       
       toast({
         title: "Price fetch completed",
         description: `Processed ${data.processed || 0} products with ${data.errors || 0} errors`,
       });
-
-      // Refresh dashboard data to show updated prices
-      await fetchDashboardData();
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -327,9 +416,95 @@ export default function Dashboard() {
     }
   };
 
+  const updateDashboardWithFetchPricesData = async (pricesData: any[]) => {
+    try {
+      // Get product information for the TCGPlayer IDs
+      const tcgplayerIds = pricesData.map(p => p.tcgplayer_id);
+      
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          set_code,
+          type,
+          tcgplayer_product_id
+        `)
+        .in('tcgplayer_product_id', tcgplayerIds);
+
+      if (productsError) {
+        console.error('Error fetching products for TCGPlayer IDs:', productsError);
+        return;
+      }
+
+      // Create a map of TCGPlayer ID to product info
+      const productMap = new Map();
+      products?.forEach(product => {
+        productMap.set(product.tcgplayer_product_id, product);
+      });
+
+      // Transform fetch prices data to DashboardRow format
+      const transformedData = pricesData.map(priceItem => {
+        const product = productMap.get(priceItem.tcgplayer_id);
+        
+        // Calculate target and max costs (simplified calculation)
+        const targetCost = priceItem.lowest_price ? priceItem.lowest_price * 0.60 : null;
+        const maxCost = priceItem.lowest_price ? priceItem.lowest_price * 0.80 : null;
+        
+        // Calculate profit margin
+        const profitMargin = priceItem.lowest_price && targetCost
+          ? ((priceItem.lowest_price - targetCost) / priceItem.lowest_price * 100)
+          : null;
+
+        return {
+          id: product?.id || `tcg-${priceItem.tcgplayer_id}`,
+          name: priceItem.product_name || 'Unknown Product',
+          set_code: product?.set_code || 'N/A',
+          type: product?.type || 'unknown',
+          lowest_total_price: priceItem.lowest_price_with_shipping,
+          lowest_item_price: priceItem.lowest_price,
+          target_product_cost: targetCost,
+          max_product_cost: maxCost,
+          profit_margin: profitMargin,
+          // Additional data from fetch prices
+          market_price: priceItem.market_price,
+          num_listings: priceItem.num_listings,
+          product_url: priceItem.product_url,
+          tcgplayer_id: priceItem.tcgplayer_id
+        };
+      });
+
+      console.log('Transformed fetch prices data:', transformedData);
+      
+      // Update the main dashboard data
+      setRowData(transformedData);
+      setFilteredData(transformedData);
+      setHasFetchPricesData(true);
+      
+      // Store data in localStorage for persistence across refreshes
+      localStorage.setItem('fetchPricesData', JSON.stringify(pricesData));
+      localStorage.setItem('fetchPricesRowData', JSON.stringify(transformedData));
+      
+      // Update stats
+      const validPrices = transformedData.filter(item => item.lowest_total_price);
+      setStats({
+        totalProducts: transformedData.length,
+        avgSavings: validPrices.length > 0 
+          ? validPrices.reduce((sum, item) => sum + (item.lowest_total_price - (item.target_product_cost || 0)), 0) / validPrices.length
+          : 0,
+        bestDeal: validPrices.length > 0 
+          ? Math.max(...validPrices.map(item => item.lowest_total_price - (item.target_product_cost || 0)))
+          : 0,
+        highPriced: validPrices.filter(item => item.lowest_total_price > 100).length
+      });
+      
+    } catch (error) {
+      console.error('Error updating dashboard with fetch prices data:', error);
+    }
+  };
+
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
       
       // Fetch today's metrics with product data
       const { data: metricsData, error: metricsError } = await supabase
@@ -377,6 +552,11 @@ export default function Dashboard() {
 
       setRowData(transformedData);
       setFilteredData(transformedData);
+      setHasFetchPricesData(false);
+      
+      // Clear stored fetch prices data when loading daily metrics
+      localStorage.removeItem('fetchPricesData');
+      localStorage.removeItem('fetchPricesRowData');
 
       // Calculate stats
       const totalProducts = transformedData.length;
@@ -403,8 +583,6 @@ export default function Dashboard() {
         description: "Please try again later",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -616,17 +794,17 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Data Grid */}
-      <Card className="shadow-sm">
-        <CardHeader className="pb-3">
+      {/* Daily Metrics Table */}
+      <Card className="shadow-sm border-border/40">
+        <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Today's Pricing Metrics
+              <CardTitle className="text-lg flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Daily Metrics
               </CardTitle>
               <CardDescription>
-                Current pricing data for MTG sealed products ({filteredData.length} items)
+                Daily pricing metrics for TCG verified products
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -644,55 +822,21 @@ export default function Dashboard() {
                 )}
                 {isFetchingPrices ? 'Fetching...' : 'Fetch Prices'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchDashboardData}
-                className="flex items-center gap-2"
-              >
-                <DollarSign className="h-4 w-4" />
-                Refresh
-              </Button>
+              {hasFetchPricesData && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearStoredData}
+                  className="flex items-center gap-2 text-orange-600 hover:text-orange-700"
+                >
+                  <X className="h-4 w-4" />
+                  Clear Data
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
-          <div className="ag-theme-alpine h-[600px] w-full rounded-lg border">
-            <AgGridReact
-              rowData={filteredData}
-              columnDefs={columnDefs}
-              defaultColDef={{
-                sortable: true,
-                filter: false,
-                resizable: true,
-              }}
-              onGridReady={onGridReady}
-              animateRows={true}
-              rowSelection="single"
-              suppressRowClickSelection={true}
-              getRowClass={(params) => {
-                if (params.data.profit_margin >= 30) return 'ag-row-profit-high';
-                if (params.data.profit_margin >= 20) return 'ag-row-profit-medium';
-                if (params.data.profit_margin >= 10) return 'ag-row-profit-low';
-                return 'ag-row-profit-none';
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Price Response Data Table */}
-      {priceResponseData.length > 0 && (
-        <Card className="shadow-sm border-border/40">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Latest Pricing Data from TCGPlayer
-            </CardTitle>
-            <CardDescription>
-              Real-time pricing information fetched for TCG verified products
-            </CardDescription>
-          </CardHeader>
+        {priceResponseData.length > 0 && (
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-border">
@@ -701,66 +845,66 @@ export default function Dashboard() {
                     <th className="border border-border p-2 text-left font-medium">Product Name</th>
                     <th className="border border-border p-2 text-left font-medium">TCG ID</th>
                     <th className="border border-border p-2 text-left font-medium">Lowest Price</th>
+                    <th className="border border-border p-2 text-left font-medium">Price + Shipping</th>
                     <th className="border border-border p-2 text-left font-medium">Market Price</th>
-                    <th className="border border-border p-2 text-left font-medium">Median Price</th>
-                    <th className="border border-border p-2 text-left font-medium">Sellers</th>
                     <th className="border border-border p-2 text-left font-medium">Listings</th>
-                    <th className="border border-border p-2 text-left font-medium">Set</th>
+                    <th className="border border-border p-2 text-left font-medium">Product URL</th>
                   </tr>
                 </thead>
                 <tbody>
                   {priceResponseData.map((item, index) => (
                     <tr key={index} className="hover:bg-muted/30">
-                      <td className="border border-border p-2 font-medium">{item.productName || 'N/A'}</td>
+                      <td className="border border-border p-2 font-medium">{item.product_name || 'N/A'}</td>
                       <td className="border border-border p-2">
                         <Badge variant="outline" className="font-mono">
-                          {item.productId || item.tcgplayerId || 'N/A'}
+                          {item.tcgplayer_id || 'N/A'}
                         </Badge>
                       </td>
                       <td className="border border-border p-2">
-                        {item.lowestPrice ? (
+                        {item.lowest_price ? (
                           <div className="flex items-center gap-1 text-success font-medium">
                             <DollarSign className="h-3 w-3" />
-                            {typeof item.lowestPrice === 'number' ? item.lowestPrice.toFixed(2) : item.lowestPrice}
+                            {typeof item.lowest_price === 'number' ? item.lowest_price.toFixed(2) : item.lowest_price}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">N/A</span>
                         )}
                       </td>
                       <td className="border border-border p-2">
-                        {item.marketPrice ? (
+                        {item.lowest_price_with_shipping ? (
+                          <div className="flex items-center gap-1 text-blue-600 font-medium">
+                            <DollarSign className="h-3 w-3" />
+                            {typeof item.lowest_price_with_shipping === 'number' ? item.lowest_price_with_shipping.toFixed(2) : item.lowest_price_with_shipping}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </td>
+                      <td className="border border-border p-2">
+                        {item.market_price ? (
                           <div className="flex items-center gap-1">
                             <DollarSign className="h-3 w-3 text-muted-foreground" />
-                            {typeof item.marketPrice === 'number' ? item.marketPrice.toFixed(2) : item.marketPrice}
+                            {typeof item.market_price === 'number' ? item.market_price.toFixed(2) : item.market_price}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">N/A</span>
                         )}
-                      </td>
-                      <td className="border border-border p-2">
-                        {item.medianPrice ? (
-                          <div className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-muted-foreground" />
-                            {typeof item.medianPrice === 'number' ? item.medianPrice.toFixed(2) : item.medianPrice}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </td>
-                      <td className="border border-border p-2">
-                        <Badge variant="secondary">
-                          {item.sellers || 0}
-                        </Badge>
                       </td>
                       <td className="border border-border p-2">
                         <Badge variant="outline">
-                          {item.listings || 0}
+                          {item.num_listings || 0}
                         </Badge>
                       </td>
                       <td className="border border-border p-2">
-                        <Badge variant="secondary" className="font-mono">
-                          {item.setCode || 'N/A'}
-                        </Badge>
+                        <a 
+                          href={item.product_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline text-sm"
+                        >
+                          View on TCGPlayer
+                          <ExternalLink className="h-3 w-3 inline ml-1" />
+                        </a>
                       </td>
                     </tr>
                   ))}
@@ -768,8 +912,8 @@ export default function Dashboard() {
               </table>
             </div>
           </CardContent>
-        </Card>
-      )}
+        )}
+      </Card>
     </div>
   );
 }

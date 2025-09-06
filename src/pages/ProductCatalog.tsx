@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Package, FileText, ExternalLink, Filter, X } from "lucide-react";
+import { Search, Package, FileText, ExternalLink, Filter, X, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Register AG Grid modules
@@ -55,15 +55,46 @@ const ProductCatalog = () => {
     fetchProducts();
   }, []);
 
+  // Refresh data when component comes into focus (e.g., when navigating from TCG Mapping)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchProducts();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Fetch all products in batches to ensure we get everything
+      let allProducts: any[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setProducts(data || []);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .range(offset, offset + batchSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allProducts = [...allProducts, ...data];
+          offset += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      console.log('Total products fetched:', allProducts.length);
+      console.log('TCG verified products:', allProducts.filter(p => p.tcg_is_verified === true).length);
+      console.log('Products with TCG ID:', allProducts.filter(p => p.tcgplayer_product_id !== null).length);
+      
+      setProducts(allProducts);
     } catch (error) {
       console.error('Error fetching products:', error);
       toast({
@@ -96,7 +127,10 @@ const ProductCatalog = () => {
   };
 
   const filteredProducts = useMemo(() => {
-    let filtered = products;
+    // Sort products by creation date (newest first) on client side
+    let filtered = [...products].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
     
     // Text search filter
     if (searchQuery) {
@@ -117,16 +151,27 @@ const ProductCatalog = () => {
     if (verificationFilter !== "all") {
       switch (verificationFilter) {
         case "tcg_verified":
-          filtered = filtered.filter(product => product.tcg_is_verified);
+          filtered = filtered.filter(product => 
+            product.tcg_is_verified === true || 
+            product.tcgplayer_product_id !== null
+          );
           break;
         case "upc_verified":
-          filtered = filtered.filter(product => product.upc_is_verified);
+          filtered = filtered.filter(product => 
+            product.upc_is_verified === true
+          );
           break;
         case "both_verified":
-          filtered = filtered.filter(product => product.tcg_is_verified && product.upc_is_verified);
+          filtered = filtered.filter(product => 
+            (product.tcg_is_verified === true || product.tcgplayer_product_id !== null) &&
+            product.upc_is_verified === true
+          );
           break;
         case "none_verified":
-          filtered = filtered.filter(product => !product.tcg_is_verified && !product.upc_is_verified);
+          filtered = filtered.filter(product => 
+            !(product.tcg_is_verified === true || product.tcgplayer_product_id !== null) &&
+            !product.upc_is_verified
+          );
           break;
       }
     }
@@ -291,10 +336,22 @@ const ProductCatalog = () => {
           <h1 className="text-3xl font-bold">Product Catalog</h1>
           <p className="text-muted-foreground">Master data browser for all MTG products</p>
         </div>
-        <Badge variant="outline">
-          {filteredProducts.length} products
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchProducts}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Badge variant="outline">
+            {filteredProducts.length} products
+          </Badge>
+        </div>
       </div>
+
 
       {/* Filters */}
       <Card>
