@@ -1041,9 +1041,50 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      daitch_mokotoff: {
+        Args: { "": string }
+        Returns: string[]
+      }
       derived_org_id: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      dmetaphone: {
+        Args: { "": string }
+        Returns: string
+      }
+      dmetaphone_alt: {
+        Args: { "": string }
+        Returns: string
+      }
+      find_best_product_match: {
+        Args: { p_scraped_name: string; p_set_code: string }
+        Returns: {
+          id: string
+          name: string
+          set_code: string
+          sim: number
+        }[]
+      }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
       }
       has_role: {
         Args: { r: Database["public"]["Enums"]["user_role"] }
@@ -1060,6 +1101,26 @@ export type Database = {
       recalculate_transport_derived: {
         Args: { p_transport: string }
         Returns: undefined
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
+      }
+      soundex: {
+        Args: { "": string }
+        Returns: string
+      }
+      text_soundex: {
+        Args: { "": string }
+        Returns: string
       }
     }
     Enums: {

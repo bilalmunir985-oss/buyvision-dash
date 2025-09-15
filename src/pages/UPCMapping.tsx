@@ -103,9 +103,15 @@ export default function UPCMapping() {
 
       if (error) throw error;
 
+      // Handle enhanced response with statistics
+      const stats = data?.stats;
+      const message = stats 
+        ? `WPN scraping completed! Found ${stats.totalScraped} products, matched ${stats.totalMatched}, staged ${stats.candidatesStaged} new candidates.`
+        : data?.message || "WPN scraping completed!";
+
       toast({
         title: "Success",
-        description: "WPN scraping completed! Refreshing candidates...",
+        description: message,
       });
 
       // Refresh the candidates after scraping
