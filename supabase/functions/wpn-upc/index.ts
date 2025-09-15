@@ -94,7 +94,11 @@ async function scrapeProductPage(url: string) {
     const setCode = url.split("/").pop()!.trim();
     const products: Array<{ name: string; upc: string; set_code: string; wpn_url: string }> = [];
 
-    // Helper function to find text by label
+    // Debug: Log page structure to understand what we're working with
+    console.log(`Page title: ${$('title').text()}`);
+    console.log(`Total elements found: ${$('*').length}`);
+    
+    // Helper function to find text by label with more flexible matching
     const readFieldByLabel = ($card: cheerio.Cheerio, label: string): string | null => {
       const labelElements = $card.find("*").filter((_, el) => {
         const text = $(el).text().trim().toLowerCase();
@@ -111,48 +115,113 @@ async function scrapeProductPage(url: string) {
       return null;
     };
 
-    // Multiple selectors for product cards
+    // Enhanced UPC extraction function
+    const extractUPCFromText = (text: string): string | null => {
+      if (!text) return null;
+      
+      // Look for UPC patterns in the text
+      const upcPatterns = [
+        /UPC[:\s]*(\d{12,13})/i,
+        /EAN[:\s]*(\d{12,13})/i,
+        /(\d{12,13})/,
+        /(\d{3}-\d{6}-\d{3})/,
+        /(\d{3}\s\d{6}\s\d{3})/
+      ];
+      
+      for (const pattern of upcPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const upc = match[1] || match[0];
+          const cleaned = upc.replace(/\D+/g, "");
+          if (cleaned.length === 12 || cleaned.length === 13) {
+            return cleaned;
+          }
+        }
+      }
+      
+      return null;
+    };
+
+    // Multiple selectors for product cards - expanded list
     const cardSelectors = [
       ".product-card", 
       ".wpn-product-card", 
       "[class*='product']",
-      ".card"
+      ".card",
+      ".product-item",
+      ".item",
+      "[class*='card']",
+      "article",
+      ".product"
     ];
 
+    let totalCardsFound = 0;
+    let cardsWithNames = 0;
+    let cardsWithUPCs = 0;
+
     for (const cardSelector of cardSelectors) {
-      $(cardSelector).each((_, el) => {
+      const cards = $(cardSelector);
+      console.log(`Found ${cards.length} elements with selector: ${cardSelector}`);
+      totalCardsFound += cards.length;
+      
+      cards.each((_, el) => {
         const $card = $(el);
 
         // Extract product name with multiple fallbacks
         const name = $card.find(".product-card__title").text().trim() ||
-                     $card.find(".title, .product-title, h2, h3").first().text().trim() ||
-                     $card.find("strong").first().text().trim();
+                     $card.find(".title, .product-title, h2, h3, h4").first().text().trim() ||
+                     $card.find("strong").first().text().trim() ||
+                     $card.find("a").first().text().trim() ||
+                     $card.text().substring(0, 100).trim(); // Fallback to first 100 chars
 
-        // Extract UPC with multiple methods
-        let upcText = $card.find(".product-card__upc").text().trim() ||
-                      readFieldByLabel($card, "UPC") ||
-                      readFieldByLabel($card, "UPC / EAN") ||
-                      readFieldByLabel($card, "EAN") ||
-                      $card.find("*:contains('UPC')").last().text().trim();
+        if (name && name.length > 3) {
+          cardsWithNames++;
+          
+          // Extract UPC with multiple methods - enhanced
+          let upcText = $card.find(".product-card__upc").text().trim() ||
+                        readFieldByLabel($card, "UPC") ||
+                        readFieldByLabel($card, "UPC / EAN") ||
+                        readFieldByLabel($card, "EAN") ||
+                        $card.find("*:contains('UPC')").last().text().trim() ||
+                        $card.find("*:contains('EAN')").last().text().trim();
 
-        const upc = upcText ? extractUPC(upcText) : null;
+          // If no specific UPC text found, search the entire card text
+          if (!upcText) {
+            upcText = $card.text();
+          }
 
-        if (name && upc) {
-          // Avoid duplicates
-          const isDuplicate = products.some(p => p.name === name && p.upc === upc);
-          if (!isDuplicate) {
-            products.push({
-              name: name.trim(),
-              upc,
-              set_code: setCode,
-              wpn_url: url,
-            });
+          const upc = upcText ? extractUPCFromText(upcText) : null;
+
+          if (upc) {
+            cardsWithUPCs++;
+            console.log(`Found UPC: ${upc} for product: ${name.substring(0, 50)}...`);
+          }
+
+          if (name && upc) {
+            // Avoid duplicates
+            const isDuplicate = products.some(p => p.name === name && p.upc === upc);
+            if (!isDuplicate) {
+              products.push({
+                name: name.trim(),
+                upc,
+                set_code: setCode,
+                wpn_url: url,
+              });
+            }
           }
         }
       });
     }
 
+    console.log(`Debug stats - Total cards: ${totalCardsFound}, With names: ${cardsWithNames}, With UPCs: ${cardsWithUPCs}`);
     console.log(`Found ${products.length} products with UPCs on ${url}`);
+    
+    // If no products found, let's see what's actually on the page
+    if (products.length === 0) {
+      console.log("No products found. Page content sample:");
+      console.log($('body').text().substring(0, 500));
+    }
+    
     return products;
   } catch (error) {
     console.error(`Error scraping product page ${url}:`, error);
@@ -237,13 +306,25 @@ async function runScraper() {
   let totalScraped = 0;
   let totalStaged = 0;
   let totalMatched = 0;
+  const startTime = Date.now();
+  const maxExecutionTime = 4 * 60 * 1000; // 4 minutes max execution time
 
   console.log("Starting enhanced WPN UPC scraper with fuzzy matching...");
 
   try {
-    // Scrape multiple pages until no more sets found
-    for (let page = 0; page < 10; page++) { // Increased from 3 to 10 pages
-      console.log(`\n--- Processing page ${page} ---`);
+    // Scrape limited pages to stay within compute limits
+    const maxPages = 3; // Reduced from 10 to 3 to prevent WORKER_LIMIT
+    const maxSetsPerPage = 5; // Limit sets per page to prevent timeout
+    const maxProductsPerSet = 10; // Limit products per set to prevent timeout
+    
+    for (let page = 0; page < maxPages; page++) {
+      // Check execution time limit
+      if (Date.now() - startTime > maxExecutionTime) {
+        console.log(`Execution time limit reached (${maxExecutionTime/1000}s), stopping gracefully`);
+        break;
+      }
+      
+      console.log(`\n--- Processing page ${page + 1}/${maxPages} ---`);
       
       const setLinks = await scrapeSetPage(page);
       if (setLinks.length === 0) {
@@ -251,11 +332,13 @@ async function runScraper() {
         break;
       }
 
-      console.log(`Found ${setLinks.length} set links on page ${page}`);
+      // Limit the number of sets processed per page
+      const limitedSetLinks = setLinks.slice(0, maxSetsPerPage);
+      console.log(`Found ${setLinks.length} set links, processing first ${limitedSetLinks.length}`);
 
-      for (const [linkIndex, link] of setLinks.entries()) {
+      for (const [linkIndex, link] of limitedSetLinks.entries()) {
         try {
-          console.log(`Processing set ${linkIndex + 1}/${setLinks.length}: ${link}`);
+          console.log(`Processing set ${linkIndex + 1}/${limitedSetLinks.length}: ${link}`);
           
           const products = await scrapeProductPage(link);
           totalScraped += products.length;
@@ -265,7 +348,11 @@ async function runScraper() {
             continue;
           }
 
-          for (const [productIndex, product] of products.entries()) {
+          // Limit the number of products processed per set
+          const limitedProducts = products.slice(0, maxProductsPerSet);
+          console.log(`Found ${products.length} products, processing first ${limitedProducts.length}`);
+
+          for (const [productIndex, product] of limitedProducts.entries()) {
             try {
               // Use fuzzy matching with similarity threshold
               const match = await findBestMatch(product.set_code, product.name);
@@ -294,29 +381,31 @@ async function runScraper() {
                 );
               }
 
-              // Rate limiting: 200ms between products
-              await sleep(200);
+              // Reduced rate limiting: 100ms between products
+              await sleep(100);
             } catch (error) {
               console.error(`Error processing product "${product.name}":`, error);
             }
           }
 
-          // Rate limiting: 400ms between set pages
-          await sleep(400);
+          // Reduced rate limiting: 200ms between set pages
+          await sleep(200);
         } catch (error) {
           console.error(`Error processing set link ${link}:`, error);
         }
       }
 
-      // Rate limiting: 1 second between pages
-      await sleep(1000);
+      // Reduced rate limiting: 500ms between pages
+      await sleep(500);
     }
   } catch (error) {
     console.error("Critical error in scraper:", error);
     throw error;
   }
 
+  const executionTime = (Date.now() - startTime) / 1000;
   console.log("\n=== Scraping Summary ===");
+  console.log(`Execution time: ${executionTime.toFixed(1)}s`);
   console.log(`Total products scraped: ${totalScraped}`);
   console.log(`Total products matched: ${totalMatched}`);
   console.log(`Total candidates staged: ${totalStaged}`);
@@ -326,7 +415,53 @@ async function runScraper() {
     scraped: totalScraped,
     matched: totalMatched,
     staged: totalStaged,
+    executionTime: executionTime,
   };
+}
+
+// Test function to debug a specific page
+async function testSpecificPage(url: string) {
+  console.log(`Testing specific page: ${url}`);
+  
+  try {
+    const { data } = await axios.get(url, getHeaders());
+    const $ = cheerio.load(data);
+    
+    console.log(`Page title: ${$('title').text()}`);
+    console.log(`Page URL: ${url}`);
+    
+    // Look for any text that might contain UPCs
+    const bodyText = $('body').text();
+    const upcMatches = bodyText.match(/\d{12,13}/g);
+    console.log(`Found ${upcMatches ? upcMatches.length : 0} potential UPC numbers in page text`);
+    
+    if (upcMatches) {
+      console.log(`Potential UPCs: ${upcMatches.slice(0, 5).join(', ')}`);
+    }
+    
+    // Look for specific elements that might contain product info
+    const productElements = $('[class*="product"], [class*="card"], [class*="item"]');
+    console.log(`Found ${productElements.length} potential product elements`);
+    
+    // Sample some text content
+    productElements.slice(0, 3).each((i, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 10) {
+        console.log(`Element ${i + 1} text sample: ${text.substring(0, 200)}...`);
+      }
+    });
+    
+    return {
+      success: true,
+      pageTitle: $('title').text(),
+      potentialUPCs: upcMatches ? upcMatches.length : 0,
+      productElements: productElements.length,
+      sampleUPCs: upcMatches ? upcMatches.slice(0, 5) : []
+    };
+  } catch (error) {
+    console.error(`Error testing page ${url}:`, error);
+    return { success: false, error: error.message };
+  }
 }
 
 // Serve HTTP endpoint
@@ -334,6 +469,23 @@ Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Handle GET requests for testing specific pages
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    const testUrl = url.searchParams.get('test');
+    
+    if (testUrl) {
+      const result = await testSpecificPage(testUrl);
+      return new Response(
+        JSON.stringify(result),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
   }
 
   if (req.method !== 'POST') {
@@ -358,6 +510,7 @@ Deno.serve(async (req) => {
           totalScraped: results.scraped,
           totalMatched: results.matched,
           candidatesStaged: results.staged,
+          executionTime: results.executionTime,
         }
       }), 
       { 

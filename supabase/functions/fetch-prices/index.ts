@@ -5,15 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface TCGListing {
-  price: number;
-  shipping: number;
-  quantity: number;
-}
+// TCGListing interface removed - now using product details endpoint
 
 interface PriceData {
   lowest_total_price: number | null;
   lowest_item_price: number | null;
+  market_price: number | null;
+  median_price: number | null;
   num_listings: number;
   total_quantity_listed: number;
   product_url: string;
@@ -25,97 +23,70 @@ async function sleep(ms: number) {
 
 async function fetchProductPricing(tcgplayerId: number): Promise<PriceData | null> {
   try {
-    // Use the correct TCGplayer listings endpoint per PRD
-    const listingsUrl = `https://mp-search-api.tcgplayer.com/v1/product/${tcgplayerId}/listings?mpfev=4215`;
+    // Use the TCGplayer product details endpoint that returns market price directly
+    const detailsUrl = `https://mp-search-api.tcgplayer.com/v2/product/${tcgplayerId}/details?mpfev=4251`;
     
     console.log(`Fetching pricing for TCGplayer ID: ${tcgplayerId}`);
     
-    const response = await fetch(listingsUrl, {
-      method: 'POST',
+    const response = await fetch(detailsUrl, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Origin': 'https://www.tcgplayer.com',
         'Referer': `https://www.tcgplayer.com/product/${tcgplayerId}`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-      body: JSON.stringify({
-        filters: {
-          productLineName: "magic",
-          minQuantity: 1
-        },
-        limit: 100,
-        offset: 0,
-        sort: "price"
-      })
+      }
     });
 
     console.log(`Response status: ${response.status} ${response.statusText}`);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Failed to fetch listings for product ${tcgplayerId}: ${response.status} ${response.statusText}`);
+      console.error(`Failed to fetch product details for ${tcgplayerId}: ${response.status} ${response.statusText}`);
       console.error(`Error response: ${errorText}`);
       return null;
     }
 
     const data = await response.json();
-    console.log(`API Response structure for product ${tcgplayerId}:`, {
-      hasResults: !!data.results,
-      resultsLength: data.results?.length || 0,
-      keys: Object.keys(data)
+    console.log(`API Response for product ${tcgplayerId}:`, {
+      marketPrice: data.marketPrice,
+      lowestPrice: data.lowestPrice,
+      medianPrice: data.medianPrice,
+      listings: data.listings,
+      sellers: data.sellers,
+      productName: data.productName,
+      setCode: data.setCode
     });
 
-    const listings: TCGListing[] = data.results || [];
-
-    if (listings.length === 0) {
-      console.log(`No listings found for product ${tcgplayerId}`);
+    // Extract comprehensive pricing data from the response
+    const marketPrice = data.marketPrice;
+    const lowestPrice = data.lowestPrice;
+    const medianPrice = data.medianPrice;
+    const listings = data.listings;
+    const sellers = data.sellers;
+    const lowestPriceWithShipping = data.lowestPriceWithShipping;
+    
+    if (!marketPrice || typeof marketPrice !== 'number' || marketPrice <= 0) {
+      console.log(`No valid market price found for product ${tcgplayerId}`);
       return {
         lowest_total_price: null,
         lowest_item_price: null,
+        market_price: null,
+        median_price: null,
         num_listings: 0,
         total_quantity_listed: 0,
         product_url: `https://www.tcgplayer.com/product/${tcgplayerId}`
       };
     }
 
-    console.log(`Found ${listings.length} listings for product ${tcgplayerId}`);
-
-    // Validate and clean listing data
-    const validListings = listings.filter(l => 
-      typeof l.price === 'number' && 
-      l.price > 0 && 
-      typeof l.quantity === 'number' && 
-      l.quantity > 0
-    );
-
-    if (validListings.length === 0) {
-      console.log(`No valid listings found for product ${tcgplayerId}`);
-      return {
-        lowest_total_price: null,
-        lowest_item_price: null,
-        num_listings: listings.length,
-        total_quantity_listed: 0,
-        product_url: `https://www.tcgplayer.com/product/${tcgplayerId}`
-      };
-    }
-
-    // Calculate lowest total price (item + shipping)
-    const lowestTotalPrice = Math.min(...validListings.map(l => l.price + (l.shipping || 0)));
-
-    // Calculate lowest item price for listings with 10+ quantity (per PRD)
-    const highQuantityListings = validListings.filter(l => l.quantity >= 10);
-    const lowestItemPrice = highQuantityListings.length > 0 
-      ? Math.min(...highQuantityListings.map(l => l.price))
-      : null;
-
-    const totalQuantity = validListings.reduce((sum, l) => sum + l.quantity, 0);
-
+    // Return comprehensive pricing data
     const result = {
-      lowest_total_price: lowestTotalPrice,
-      lowest_item_price: lowestItemPrice,
-      num_listings: validListings.length,
-      total_quantity_listed: totalQuantity,
+      lowest_total_price: lowestPriceWithShipping || lowestPrice || marketPrice,
+      lowest_item_price: lowestPrice || marketPrice,
+      market_price: marketPrice,
+      median_price: medianPrice,
+      num_listings: listings || 0,
+      total_quantity_listed: listings || 0, // Using listings as quantity indicator
       product_url: `https://www.tcgplayer.com/product/${tcgplayerId}`
     };
 
@@ -255,24 +226,39 @@ Deno.serve(async (req) => {
         } else {
           processed++;
           
-          // Store pricing data for UI display
-          collectedPriceData.push({
-            productName: product.name,
-            productId: product.tcgplayer_product_id,
-            tcgplayerId: product.tcgplayer_product_id,
-            lowestPrice: priceData.lowest_total_price,
-            marketPrice: priceData.lowest_item_price,
-            medianPrice: null, // We don't calculate median in current implementation
-            sellers: null, // Not available in current API
-            listings: priceData.num_listings,
-            setCode: null, // We don't have set info in this context
-            targetCost: target_product_cost,
-            maxCost: max_product_cost
-          });
+        // Store comprehensive pricing data for UI display
+        collectedPriceData.push({
+          productId: product.id,
+          productName: product.name,
+          setCode: product.set_code,
+          type: product.type,
+          tcgplayerId: product.tcgplayer_product_id,
+          // Pricing metrics
+          lowestTotalPrice: priceData.lowest_total_price,
+          lowestItemPrice: priceData.lowest_item_price,
+          marketPrice: priceData.market_price,
+          medianPrice: priceData.median_price,
+          numListings: priceData.num_listings,
+          totalQuantityListed: priceData.total_quantity_listed,
+          productUrl: priceData.product_url,
+          // Cost analysis
+          targetProductCost: target_product_cost,
+          maxProductCost: max_product_cost,
+          // Calculated metrics
+          profitMargin: priceData.lowest_total_price && target_product_cost 
+            ? ((priceData.lowest_total_price - target_product_cost) / target_product_cost * 100)
+            : null,
+          savingsVsMax: priceData.lowest_total_price && max_product_cost
+            ? (max_product_cost - priceData.lowest_total_price)
+            : null,
+          withinTarget: priceData.lowest_total_price && target_product_cost
+            ? priceData.lowest_total_price <= target_product_cost
+            : null
+        });
         }
 
-        // Rate limiting - sleep between requests
-        await sleep(2000);
+        // Rate limiting - sleep between requests (reduced since new endpoint is more reliable)
+        await sleep(1000);
       } catch (error) {
         console.error(`Error processing product ${product.name}:`, error);
         errors++;
@@ -287,7 +273,14 @@ Deno.serve(async (req) => {
         processed,
         errors,
         total: products.length,
-        priceData: collectedPriceData
+        summary: {
+          totalProducts: products.length,
+          processedSuccessfully: processed,
+          errors: errors,
+          successRate: products.length > 0 ? (processed / products.length * 100).toFixed(1) + '%' : '0%'
+        },
+        priceData: collectedPriceData,
+        timestamp: new Date().toISOString()
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
