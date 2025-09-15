@@ -4,9 +4,14 @@ import { createClient } from "@supabase/supabase-js";
 
 // 🔑 Supabase connection
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // Needs row insert access
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')! // Needs row insert access
 );
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 const BASE_URL = "https://wpn.wizards.com/en/products";
 
@@ -96,4 +101,48 @@ async function runScraper() {
   console.log("Scraping done. Total products:", allResults.length);
 }
 
-runScraper().catch(console.error);
+// Serve HTTP endpoint
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }), 
+      { 
+        status: 405, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+
+  try {
+    console.log('Starting WPN UPC scraper...');
+    await runScraper();
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'WPN UPC scraping completed successfully' 
+      }), 
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('Error in WPN scraper:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }), 
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});

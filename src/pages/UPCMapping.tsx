@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Check, X } from 'lucide-react';
+import { Loader2, Check, X, RefreshCw } from 'lucide-react';
 
 interface UPCCandidate {
   id: string;
@@ -21,6 +21,7 @@ interface UPCCandidate {
 export default function UPCMapping() {
   const [upcCandidates, setUpcCandidates] = useState<UPCCandidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scraping, setScraping] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -93,6 +94,34 @@ export default function UPCMapping() {
     }
   };
 
+  const handleStartScraping = async () => {
+    setScraping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('wpn-upc', {
+        body: {}
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "WPN scraping completed! Refreshing candidates...",
+      });
+
+      // Refresh the candidates after scraping
+      await fetchUPCCandidates();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Error starting scraper",
+        description: error instanceof Error ? error.message : "Failed to start scraping",
+        variant: "destructive",
+      });
+    } finally {
+      setScraping(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -103,9 +132,23 @@ export default function UPCMapping() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">UPC Mapping</h1>
-        <p className="text-muted-foreground">Review UPC codes from WPN pages</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">UPC Mapping</h1>
+          <p className="text-muted-foreground">Review UPC codes from WPN pages</p>
+        </div>
+        <Button 
+          onClick={handleStartScraping} 
+          disabled={scraping}
+          className="flex items-center gap-2"
+        >
+          {scraping ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {scraping ? 'Scraping...' : 'Start WPN Scraping'}
+        </Button>
       </div>
 
       <Card>
