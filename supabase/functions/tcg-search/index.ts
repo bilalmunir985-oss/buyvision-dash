@@ -1,76 +1,165 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
+// deno-lint-ignore-file no-explicit-any
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'application/json'
+};
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // change "*" to your frontend domain for security
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+const AUTOCOMPLETE_URL = 'https://data.tcgplayer.com/autocomplete';
+
+function generateSessionId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders })
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Origin': 'https://www.tcgplayer.com',
+    'Referer': 'https://www.tcgplayer.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  };
+}
+
+async function searchTCG(query: string, setName?: string) {
+  // Build search query - include set name if provided
+  const searchQuery = setName ? `${query} ${setName}` : query;
+  
+  const sessionId = generateSessionId();
+  const url = new URL(AUTOCOMPLETE_URL);
+  url.searchParams.set('q', searchQuery);
+  url.searchParams.set('session-id', sessionId);
+  url.searchParams.set('product-line-affinity', 'All');
+  url.searchParams.set('algorithm', 'product_line_affinity');
+
+  console.log('Searching TCGplayer autocomplete for:', searchQuery);
+  console.log('URL:', url.toString());
+  
+  const response = await fetch(url.toString(), { 
+    method: 'GET', 
+    headers: headers()
+  });
+  
+  console.log('Response status:', response.status);
+  
+  if (!response.ok) {
+    console.log('TCG search failed:', response.status, await response.text());
+    return [];
+  }
+  
+  let json: any;
+  try { 
+    json = await response.json(); 
+  } catch (e) { 
+    console.log('Failed to parse JSON response:', e); 
+    return []; 
+  }
+  
+  console.log('Response data keys:', Object.keys(json));
+  console.log('Products found:', json.products?.length || 0);
+  
+  const products = Array.isArray(json?.products) ? json.products : [];
+  console.log('Found', products.length, 'products');
+  
+  // Filter for Magic: The Gathering products only and map to expected format
+  const mappedResults = products
+    .filter((item: any) => item['product-line-name'] === 'Magic: The Gathering' && item['product-id'] && item['product-name'])
+    .map((item: any) => ({ 
+      productId: item['product-id'], 
+      productName: item['product-name']
+    }))
+    .slice(0, 10); // Limit to 10 results
+  
+  console.log('Returning', mappedResults.length, 'valid Magic products');
+  return mappedResults;
+}
+
+async function tryHtml(query: string) {
+  console.log('Trying HTML fallback for:', query);
+  
+  const url = 'https://www.tcgplayer.com/search/magic/product?productLineName=magic&categoryName=Sealed%20Products&q=' + encodeURIComponent(query);
+  
+  const r = await fetch(url, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.5',
+      'accept-encoding': 'gzip, deflate, br',
+      'dnt': '1',
+      'connection': 'keep-alive',
+      'upgrade-insecure-requests': '1'
+    }
+  });
+  
+  if (!r.ok) {
+    console.log('HTML fetch failed:', r.status);
+    return [];
+  }
+  
+  const html = await r.text();
+  
+  // Extract product links and names from HTML
+  const productRegex = /href="\/product\/(\d+)[^"]*"[^>]*>([^<]+)/g;
+  const results: Array<{productId: number, productName: string}> = [];
+  let match;
+  
+  while ((match = productRegex.exec(html)) !== null && results.length < 10) {
+    const productId = parseInt(match[1]);
+    const productName = match[2].trim();
+    
+    // Filter for sealed products
+    if (productName.toLowerCase().includes('booster') || 
+        productName.toLowerCase().includes('bundle') || 
+        productName.toLowerCase().includes('box') ||
+        productName.toLowerCase().includes('deck') ||
+        productName.toLowerCase().includes('case')) {
+      results.push({
+        productId,
+        productName
+      });
+    }
+  }
+  
+  console.log('HTML results found:', results.length);
+  return results;
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
+  if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: cors });
+
+  let body: any = {};
+  try { body = await req.json(); } catch {}
+  const query = (body?.query ?? '').toString().trim();
+  if (!query) return new Response(JSON.stringify({ error: 'missing_query' }), { status: 400, headers: cors });
+
+  const setName = body?.setName || body?.set_code;
+  
+  console.log('Searching for:', query, setName ? `(Set: ${setName})` : '');
+
+  // Use the new TCGplayer catalog search
+  const results = await searchTCG(query, setName);
+  
+  if (results.length > 0) {
+    console.log(`Success with ${results.length} results`);
+    return new Response(JSON.stringify({ results }), { headers: cors });
   }
 
-  try {
-    const { query } = await req.json()
-    if (!query) {
-      return new Response(JSON.stringify({ error: "Missing query" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
-    const sessionId = crypto.randomUUID()
-
-    const apiUrl = `https://data.tcgplayer.com/autocomplete?q=${encodeURIComponent(
-      query
-    )}&session-id=${sessionId}&product-line-affinity=All&algorithm=product_line_affinity`
-
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        accept: "application/json",
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        origin: "https://www.tcgplayer.com",
-        referer: "https://www.tcgplayer.com/",
-      },
-    })
-
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({
-          error: `TCG request failed with status ${response.status}`,
-        }),
-        {
-          status: response.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      )
-    }
-
-    const data = await response.json()
-    const products =
-      (Array.isArray(data) ? data[0]?.products : data?.products) || []
-
-    const mapped = products
-      .filter((p: any) => p["product-line-name"] === "Magic: The Gathering")
-      .map((p: any) => ({
-        id: p["product-id"],
-        name: p["product-name"],
-        set: p["set-name"],
-        urlName: p["product-url-name"],
-      }))
-
-    return new Response(JSON.stringify({ query, products: mapped }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+  // Try HTML fallback only if catalog search completely fails
+  const htmlItems = await tryHtml(query);
+  if (htmlItems.length > 0) {
+    console.log(`HTML fallback success with ${htmlItems.length} results`);
+    return new Response(JSON.stringify({ results: htmlItems }), { headers: cors });
   }
-})
+
+  console.log('No results found from any method');
+  return new Response(JSON.stringify({ 
+    results: [],
+    message: 'No matching products found' 
+  }), { headers: cors });
+});
