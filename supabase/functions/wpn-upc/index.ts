@@ -1,6 +1,6 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
-import { createClient } from "@supabase/supabase-js";
+import axios from "https://deno.land/x/axiod@0.26.2/mod.ts";
+import * as cheerio from "https://esm.sh/cheerio@1.0.0-rc.12";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // 🔑 Supabase connection
 const supabase = createClient(
