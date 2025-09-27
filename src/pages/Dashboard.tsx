@@ -353,6 +353,8 @@ export default function Dashboard() {
       }
       
       setLoading(false);
+      // Always refresh latest prices on page load
+      await fetchPrices({ silent: true });
     };
     
     loadInitialData();
@@ -478,14 +480,17 @@ export default function Dashboard() {
     });
   };
 
-  const fetchPrices = async () => {
+  const fetchPrices = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
     try {
       setIsFetchingPrices(true);
       
-      toast({
-        title: "Fetching latest prices...",
-        description: "This may take a few minutes to complete",
-      });
+      if (!silent) {
+        toast({
+          title: "Fetching latest prices...",
+          description: "This may take a few minutes to complete",
+        });
+      }
 
       const { data, error } = await supabase.functions.invoke('fetch-prices');
 
@@ -514,10 +519,12 @@ export default function Dashboard() {
         console.log('No price data found in response');
       }
       
-      toast({
-        title: "Price fetch completed",
-        description: `Processed ${data.processed || 0} products with ${data.errors || 0} errors`,
-      });
+      if (!silent) {
+        toast({
+          title: "Price fetch completed",
+          description: `Processed ${data.processed || 0} products with ${data.errors || 0} errors`,
+        });
+      }
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -913,7 +920,7 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={fetchPrices}
+                onClick={() => fetchPrices()}
                 disabled={isFetchingPrices}
                 className="flex items-center gap-2"
               >
