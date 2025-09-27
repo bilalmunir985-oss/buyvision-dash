@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,8 +15,21 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState('signin');
+  const [searchParams] = useSearchParams();
   const { user, signIn, signUp } = useAuth();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Check if user was redirected after email confirmation
+    if (searchParams.get('confirmed') === 'true') {
+      toast({
+        title: "Email Confirmed!",
+        description: "Your account has been verified. Please sign in.",
+      });
+      setActiveTab('signin');
+    }
+  }, [searchParams, toast]);
 
   if (user) {
     return <Navigate to="/" replace />;
@@ -52,6 +65,10 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
+      toast({
+        title: "Check Your Email",
+        description: `We've sent a confirmation link to ${email}. Please check your inbox and click the link to verify your account.`,
+      });
       setShowEmailDialog(true);
     }
     
@@ -68,7 +85,7 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="signin" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -155,10 +172,13 @@ export default function Auth() {
               </div>
             </div>
             <Button 
-              onClick={() => setShowEmailDialog(false)} 
+              onClick={() => {
+                setShowEmailDialog(false);
+                setActiveTab('signin');
+              }} 
               className="w-full"
             >
-              Got it
+              Go to Sign In
             </Button>
           </div>
         </DialogContent>
