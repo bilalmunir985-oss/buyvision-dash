@@ -67,17 +67,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create supabase client with service role key for database operations
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
+    // Use the authenticated client for DB operations so RLS/auth.uid() evaluate correctly
+    const supabaseClient = authClient;
 
     // Fetch all products from MTGJSON SetList API
     const response = await fetchWithTimeout('https://mtgjson.com/api/v5/SetList.json', {}, 30000);
@@ -163,7 +154,6 @@ Deno.serve(async (req) => {
 
         // Ensure all required fields are present and valid
         const flatProduct = {
-          id: crypto.randomUUID(), // Generate new UUID for primary key
           mtgjson_uuid: product.productId,
           name: (product.name || 'Unknown Product').substring(0, 255),
           set_code: (product.setCode || 'UNK').substring(0, 10),
