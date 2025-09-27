@@ -36,6 +36,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        // Clear localStorage when user changes (login/logout)
+        if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
+          localStorage.removeItem('fetchPricesData');
+          localStorage.removeItem('fetchPricesRowData');
+        }
       }
     );
 
@@ -71,6 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    // Clear localStorage data when user signs out
+    localStorage.removeItem('fetchPricesData');
+    localStorage.removeItem('fetchPricesRowData');
     await supabase.auth.signOut();
   };
 
