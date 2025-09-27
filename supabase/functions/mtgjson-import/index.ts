@@ -118,111 +118,99 @@ Deno.serve(async (req) => {
       throw new Error('No sealed products found in MTGJSON API response');
     }
 
-    let added = 0;
-    let updated = 0;
+    console.log(`Total products found: ${allProducts.length}`);
+    
+    // Prepare all products for bulk operations
+    const productsToInsert: any[] = [];
+    const productsToUpdate: any[] = [];
+    let processed = 0;
     let errors = 0;
 
-    // Process products in much smaller batches to avoid CPU limits
-    const BATCH_SIZE = 10; // Reduced from 50 to 10
-    const MAX_PRODUCTS = 100; // Limit total products per function call
+    // Get existing products for this user to check for duplicates
+    const { data: existingProducts } = await supabaseClient
+      .from('products')
+      .select('mtgjson_uuid')
+      .eq('user_id', user.id);
+
+    const existingUUIDs = new Set(existingProducts?.map(p => p.mtgjson_uuid) || []);
     
-    // Only process first 100 products to avoid CPU timeout
-    const productsToProcess = allProducts.slice(0, MAX_PRODUCTS);
-    
-    for (let i = 0; i < productsToProcess.length; i += BATCH_SIZE) {
-      const batch = productsToProcess.slice(i, i + BATCH_SIZE);
-      
-      // Process batch sequentially to avoid overwhelming the database
-      for (const product of batch) {
-        try {
-          // Validate required fields
-          if (!product.productId || !product.name || !product.setCode) {
-            errors++;
-            continue;
-          }
-
-          // Ensure all required fields are present and valid
-          const flatProduct = {
-            id: product.productId, // Use productId as primary key
-            mtgjson_uuid: product.productId,
-            name: (product.name || 'Unknown Product').substring(0, 255),
-            set_code: (product.setCode || 'UNK').substring(0, 10),
-            type: deriveType(product.category) || 'other',
-            release_date: product.releaseDate || null,
-            language: product.language || 'English',
-            raw_json: product || {},
-            active: true,
-            user_id: user.id,
-            // Ensure all NOT NULL fields have values
-            tcgplayer_product_id: null,
-            tcg_is_verified: false,
-            upc: null,
-            upc_is_verified: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-
-          // Check if product already exists
-          const { data: existing } = await supabaseClient
-            .from('products')
-            .select('id')
-            .eq('id', product.productId)
-            .eq('user_id', user.id)
-            .single();
-
-          if (existing) {
-            // Update existing product
-            const { error: updateError } = await supabaseClient
-              .from('products')
-              .update({
-                name: flatProduct.name,
-                set_code: flatProduct.set_code,
-                type: flatProduct.type,
-                release_date: flatProduct.release_date,
-                language: flatProduct.language,
-                raw_json: flatProduct.raw_json,
-                updated_at: flatProduct.updated_at
-              })
-              .eq('id', product.productId)
-              .eq('user_id', user.id);
-
-            if (updateError) {
-              console.error('Error updating product:', updateError);
-              errors++;
-            } else {
-              updated++;
-            }
-          } else {
-            // Insert new product
-            const { error: insertError } = await supabaseClient
-              .from('products')
-              .insert(flatProduct);
-
-            if (insertError) {
-              console.error('Error inserting product:', insertError);
-              errors++;
-            } else {
-              added++;
-            }
-          }
-        } catch (error) {
-          console.error('Error processing product:', error);
+    // Process all products and prepare for bulk operations
+    for (const product of allProducts) {
+      try {
+        // Validate required fields
+        if (!product.productId || !product.name || !product.setCode) {
           errors++;
+          continue;
+        }
+
+        // Ensure all required fields are present and valid
+        const flatProduct = {
+          id: crypto.randomUUID(), // Generate new UUID for primary key
+          mtgjson_uuid: product.productId,
+          name: (product.name || 'Unknown Product').substring(0, 255),
+          set_code: (product.setCode || 'UNK').substring(0, 10),
+          type: deriveType(product.category) || 'other',
+          release_date: product.releaseDate || null,
+          language: product.language || 'English',
+          raw_json: product || {},
+          active: true,
+          user_id: user.id,
+          tcgplayer_product_id: null,
+          tcg_is_verified: false,
+          upc: null,
+          upc_is_verified: false
+        };
+
+        // Check if this product already exists for this user
+        if (existingUUIDs.has(product.productId)) {
+          // Skip duplicates
+          continue;
+        } else {
+          // Add to insert batch
+          productsToInsert.push(flatProduct);
+        }
+        
+        processed++;
+      } catch (error) {
+        console.error('Error processing product:', error);
+        errors++;
+      }
+    }
+
+    let added = 0;
+    let updated = 0;
+
+    // Bulk insert new products in batches
+    if (productsToInsert.length > 0) {
+      console.log(`Inserting ${productsToInsert.length} new products...`);
+      
+      const BATCH_SIZE = 100; // Process in batches of 100
+      for (let i = 0; i < productsToInsert.length; i += BATCH_SIZE) {
+        const batch = productsToInsert.slice(i, i + BATCH_SIZE);
+        
+        const { error: insertError, data } = await supabaseClient
+          .from('products')
+          .insert(batch)
+          .select('id');
+
+        if (insertError) {
+          console.error('Batch insert error:', insertError);
+          errors += batch.length;
+        } else {
+          added += batch.length;
+          console.log(`Successfully inserted batch ${Math.floor(i / BATCH_SIZE) + 1}, total added: ${added}`);
         }
       }
-      
-      // Small delay between batches to reduce CPU pressure
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     const summary = {
       status: 'success',
       total: allProducts.length,
-      processed: productsToProcess.length,
+      processed: processed,
       added,
       updated,
       errors,
-      message: `Successfully processed ${productsToProcess.length} of ${allProducts.length} products from MTGJSON API. ${added} added, ${updated} updated, ${errors} errors. Run again to process more products.`
+      message: `Successfully processed all ${processed} products from MTGJSON API. ${added} added, ${updated} updated, ${errors} errors. No duplicates were inserted.`
     };
 
     return new Response(
