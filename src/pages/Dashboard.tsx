@@ -66,7 +66,19 @@ export default function Dashboard() {
     highPriced: 0
   });
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
-  const [priceResponseData, setPriceResponseData] = useState<any[]>([]);
+  const [priceResponseData, setPriceResponseData] = useState<any[]>(() => {
+    // Initialize with stored data if available
+    const storedData = localStorage.getItem('fetchPricesData');
+    if (storedData) {
+      try {
+        return JSON.parse(storedData);
+      } catch (error) {
+        console.error('Error parsing stored fetch prices data:', error);
+        localStorage.removeItem('fetchPricesData');
+      }
+    }
+    return [];
+  });
   const [hasFetchPricesData, setHasFetchPricesData] = useState(() => {
     // Check if we have fetch prices data in localStorage
     const storedData = localStorage.getItem('fetchPricesData');
