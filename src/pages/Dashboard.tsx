@@ -48,8 +48,32 @@ interface DashboardRow {
 }
 
 export default function Dashboard() {
-  const [rowData, setRowData] = useState<DashboardRow[]>([]);
-  const [filteredData, setFilteredData] = useState<DashboardRow[]>([]);
+  const [rowData, setRowData] = useState<DashboardRow[]>(() => {
+    // Initialize with stored data if available
+    const storedRowData = localStorage.getItem('fetchPricesRowData');
+    if (storedRowData) {
+      try {
+        return JSON.parse(storedRowData);
+      } catch (error) {
+        console.error('Error parsing stored row data:', error);
+        localStorage.removeItem('fetchPricesRowData');
+      }
+    }
+    return [];
+  });
+  const [filteredData, setFilteredData] = useState<DashboardRow[]>(() => {
+    // Initialize with stored data if available
+    const storedRowData = localStorage.getItem('fetchPricesRowData');
+    if (storedRowData) {
+      try {
+        return JSON.parse(storedRowData);
+      } catch (error) {
+        console.error('Error parsing stored row data:', error);
+        localStorage.removeItem('fetchPricesRowData');
+      }
+    }
+    return [];
+  });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   
