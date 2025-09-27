@@ -78,11 +78,7 @@ export default function UPCMapping() {
     setVerifyingCandidate(candidateId);
     try {
       const { data, error } = await supabase.functions.invoke('wpn-upc', {
-        body: { candidateId },
-        headers: { 'Content-Type': 'application/json' }
-      }, {
-        method: 'POST',
-        query: { action: 'approve' }
+        body: { candidateId }
       });
 
       if (error) throw error;
@@ -115,11 +111,7 @@ export default function UPCMapping() {
     setVerifyingCandidate(candidateId);
     try {
       const { data, error } = await supabase.functions.invoke('wpn-upc', {
-        body: { candidateId },
-        headers: { 'Content-Type': 'application/json' }
-      }, {
-        method: 'POST',
-        query: { action: 'reject' }
+        body: { candidateId }
       });
 
       if (error) throw error;
@@ -342,7 +334,7 @@ export default function UPCMapping() {
           ) : (
             <div className="space-y-4">
               {upcCandidates.map((candidate) => {
-                const isUnmatched = !candidate.product_id || candidate.product_id === null;
+                const isUnmatched = !candidate.products || candidate.products === null;
                 return (
                   <div key={candidate.id} className={`border rounded-lg p-4 ${isUnmatched ? 'bg-yellow-50 border-yellow-200' : ''}`}>
                     <div className="mb-3">

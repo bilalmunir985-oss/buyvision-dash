@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     console.error('Auto mapping error:', error);
     return new Response(JSON.stringify({
       status: 'error',
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

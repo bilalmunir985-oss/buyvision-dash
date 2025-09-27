@@ -6,9 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
-// We'll create the client with user context in the handler
-
-// External scraper API endpoint (fallback to sample data if not available)
+// External scraper API endpoint
 const SCRAPER_API_URL = 'https://8498dec63c89.ngrok-free.app/scrape';
 
 interface ScrapedProduct {
@@ -131,8 +129,8 @@ async function stageUPCCandidate(supabase: any, userId: string, match: ProductMa
   try {
     if (!match.matched_product_id) {
       console.log(`No match found for ${match.scraped_product.name}, not staging`);
-    return false;
-  }
+      return false;
+    }
 
     // Check if candidate already exists for this user
     const { data: existing } = await supabase
@@ -329,7 +327,8 @@ async function approveUPCMapping(supabase: any, userId: string, candidateId: str
         upc: candidate.scraped_upc,
         upc_is_verified: true
       })
-      .eq('id', candidate.product_id);
+      .eq('id', candidate.product_id)
+      .eq('user_id', userId);
 
     if (updateError) {
       return { success: false, message: 'Failed to update product' };
@@ -339,7 +338,8 @@ async function approveUPCMapping(supabase: any, userId: string, candidateId: str
     const { error: deleteError } = await supabase
       .from('upc_candidates')
       .delete()
-      .eq('id', candidateId);
+      .eq('id', candidateId)
+      .eq('user_id', userId);
 
     if (deleteError) {
       console.error('Error removing candidate:', deleteError);
@@ -349,7 +349,7 @@ async function approveUPCMapping(supabase: any, userId: string, candidateId: str
       success: true,
       message: `UPC ${candidate.scraped_upc} verified for ${candidate.products?.name}`
     };
-        } catch (error) {
+  } catch (error) {
     console.error('Error approving UPC mapping:', error);
     return {
       success: false,
@@ -374,10 +374,10 @@ async function rejectUPCMapping(supabase: any, userId: string, candidateId: stri
     return { success: true, message: 'UPC candidate rejected' };
   } catch (error) {
     console.error('Error rejecting UPC mapping:', error);
-  return {
+    return {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error'
-  };
+    };
   }
 }
 
@@ -477,7 +477,7 @@ Deno.serve(async (req) => {
 
       const result = await rejectUPCMapping(supabase, user.id, candidateId);
       
-    return new Response(
+      return new Response(
         JSON.stringify(result),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -490,7 +490,6 @@ Deno.serve(async (req) => {
     if (req.method === 'GET') {
       const { data: candidates, error } = await supabase
         .from('upc_candidates')
-        .eq('user_id', user.id)
         .select(`
           *,
           products:product_id (
@@ -500,6 +499,7 @@ Deno.serve(async (req) => {
             type
           )
         `)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -511,15 +511,15 @@ Deno.serve(async (req) => {
           }
         );
       }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
+
+      return new Response(
+        JSON.stringify({
+          success: true,
           candidates: candidates || []
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200, 
+          status: 200,
         }
       );
     }
@@ -532,15 +532,15 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Error in wpn-upc function:', error);
+    console.error('WPN UPC function error:', error);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
-      }), 
-      { 
+      JSON.stringify({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500, 
+        status: 500,
       }
     );
   }

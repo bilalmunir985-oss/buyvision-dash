@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
         collectedPriceData.push({
           productId: product.id,
           productName: product.name,
-          setCode: product.set_code,
+          setCode: '', // Note: set_code not available in this select, add if needed
           type: product.type,
           tcgplayerId: product.tcgplayer_product_id,
           // Pricing metrics
@@ -320,7 +320,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         status: 'error',
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
