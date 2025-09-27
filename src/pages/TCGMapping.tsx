@@ -12,6 +12,9 @@ interface Product {
   name: string;
   set_code: string;
   type: string;
+  productId?: string; // For MTGJSON products
+  setCode?: string; // For MTGJSON products
+  category?: string; // For MTGJSON products
 }
 
 interface TCGSearchResult {
@@ -31,6 +34,7 @@ export default function TCGMapping() {
   const [autoMapping, setAutoMapping] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
+  const [verifyingProduct, setVerifyingProduct] = useState<string | null>(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,6 +68,7 @@ export default function TCGMapping() {
 
   const fetchUnverifiedProducts = async () => {
     try {
+      // Fetch unverified products from database
       // First, get the total count
       const { count, error: countError } = await supabase
         .from('products')
@@ -126,10 +131,12 @@ export default function TCGMapping() {
 
     try {
       const product = unverifiedProducts.find(p => p.id === productId);
+      const setName = product?.set_code; // Use database field
+      
       const response = await supabase.functions.invoke('tcg-search', {
         body: { 
           query: productName,
-          setName: product?.set_code // Pass set code to improve matching
+          setName: setName // Pass set code to improve matching
         }
       });
 
@@ -154,7 +161,10 @@ export default function TCGMapping() {
     const currentProduct = allUnverifiedProducts.find(p => p.id === selectedProduct);
     if (!currentProduct) return;
 
+    setVerifyingProduct(tcgResult.id.toString());
+
     try {
+      // Use the existing admin-set-tcg-id function for database products
       const response = await supabase.functions.invoke('admin-set-tcg-id', {
         body: { 
           productId: selectedProduct, 
@@ -163,6 +173,11 @@ export default function TCGMapping() {
       });
 
       if (response.error) throw response.error;
+
+      toast({
+        title: "Success",
+        description: "TCGplayer mapping saved to database!",
+      });
 
       // Remove from all products and update displayed products
       const updatedProducts = allUnverifiedProducts.filter(p => p.id !== selectedProduct);
@@ -186,16 +201,14 @@ export default function TCGMapping() {
       setSelectedProduct(null);
       setSearchResults([]);
 
-      toast({
-        title: "Success",
-        description: "TCGplayer mapping saved!",
-      });
     } catch (error) {
       console.error('Error:', error);
       toast({
         title: "Error saving mapping",
         variant: "destructive",
       });
+    } finally {
+      setVerifyingProduct(null);
     }
   };
 
@@ -512,9 +525,22 @@ export default function TCGMapping() {
                             <ExternalLink className="h-4 w-4 mr-1" />
                             View
                           </Button>
-                          <Button size="sm" onClick={() => handleVerifyMatch(result)}>
-                            <Check className="h-4 w-4 mr-1" />
-                            Verify
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleVerifyMatch(result)}
+                            disabled={verifyingProduct === result.id.toString()}
+                          >
+                            {verifyingProduct === result.id.toString() ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                Verifying...
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-4 w-4 mr-1" />
+                                Verify
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>

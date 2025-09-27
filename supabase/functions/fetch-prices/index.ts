@@ -143,14 +143,40 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Get the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create Supabase client with user context
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
     );
 
-    console.log('Starting price fetch job...');
+    // Get the current user
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or missing user authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Get all verified products with TCGplayer IDs
+    console.log(`Starting price fetch job for user: ${user.id}...`);
+
+    // Get all verified products with TCGplayer IDs for the current user
     const { data: products, error: productsError } = await supabaseClient
       .from('products')
       .select(`
@@ -165,6 +191,7 @@ Deno.serve(async (req) => {
       `)
       .eq('tcg_is_verified', true)
       .eq('active', true)
+      .eq('user_id', user.id)
       .not('tcgplayer_product_id', 'is', null);
 
     if (productsError) {
@@ -208,6 +235,7 @@ Deno.serve(async (req) => {
           .from('daily_metrics')
           .upsert({
             product_id: product.id,
+            user_id: user.id,
             as_of_date: today,
             product_url: priceData.product_url,
             lowest_total_price: priceData.lowest_total_price,

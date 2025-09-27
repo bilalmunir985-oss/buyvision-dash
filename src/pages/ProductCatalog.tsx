@@ -31,6 +31,11 @@ interface Product {
   created_at: string;
   updated_at: string;
   raw_json: any;
+  // MTGJSON product fields
+  productId?: string;
+  setCode?: string;
+  category?: string;
+  uuid?: string;
 }
 
 interface ProductContent {
@@ -67,7 +72,7 @@ const ProductCatalog = () => {
 
   const fetchProducts = async () => {
     try {
-      // Fetch all products in batches to ensure we get everything
+      // Fetch products from database
       let allProducts: any[] = [];
       let offset = 0;
       const batchSize = 1000;
@@ -77,7 +82,8 @@ const ProductCatalog = () => {
         const { data, error } = await supabase
           .from('products')
           .select('*')
-          .range(offset, offset + batchSize - 1);
+          .range(offset, offset + batchSize - 1)
+          .order('created_at', { ascending: false });
 
         if (error) throw error;
 
@@ -90,7 +96,7 @@ const ProductCatalog = () => {
         }
       }
 
-      console.log('Total products fetched:', allProducts.length);
+      console.log('Total products fetched from database:', allProducts.length);
       console.log('TCG verified products:', allProducts.filter(p => p.tcg_is_verified === true).length);
       console.log('Products with TCG ID:', allProducts.filter(p => p.tcgplayer_product_id !== null).length);
       
@@ -526,7 +532,7 @@ const ProductCatalog = () => {
                     </div>
                     <div>
                       <label className="text-sm font-medium">Type</label>
-                      <p className="text-sm capitalize">{selectedProduct.type}</p>
+                      <p className="text-sm capitalize">{selectedProduct.type || "—"}</p>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Release Date</label>

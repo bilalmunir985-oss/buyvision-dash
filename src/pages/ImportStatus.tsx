@@ -14,19 +14,37 @@ export default function ImportStatus() {
     setLoadingStates(prev => ({ ...prev, [jobName]: true }));
 
     try {
-      const response = await supabase.functions.invoke(endpoint);
+      // Get the current session to ensure we have auth
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Not authenticated. Please log in again.');
+      }
 
-      if (response.error) throw response.error;
+      const response = await supabase.functions.invoke(endpoint, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
+      if (response.error) {
+        throw response.error;
+      }
+
+      // Show detailed success message with response data
+      const result = response.data;
+      const message = result?.message || `${jobName} completed successfully.`;
+      
       toast({
         title: "Import Successful",
-        description: `${jobName} completed successfully.`,
+        description: message,
       });
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (error: any) {
+      const errorMessage = error?.message || `${jobName} failed to run.`;
+      
       toast({
         title: "Import Failed",
-        description: `${jobName} failed to run.`,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

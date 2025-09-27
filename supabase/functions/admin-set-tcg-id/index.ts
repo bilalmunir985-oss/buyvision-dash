@@ -12,6 +12,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Get the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { productId, tcgId } = await req.json();
 
     if (!productId || !tcgId) {
@@ -24,10 +33,27 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Create Supabase client with user context
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
     );
+
+    // Get the current user
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or missing user authentication' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log(`Setting TCG ID ${tcgId} for product ${productId}`);
 
@@ -38,6 +64,7 @@ Deno.serve(async (req) => {
         tcg_is_verified: true
       })
       .eq('id', productId)
+      .eq('user_id', user.id)
       .select('id, name')
       .single();
 

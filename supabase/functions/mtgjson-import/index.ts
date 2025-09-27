@@ -5,18 +5,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface MTGJSONProduct {
-  productId: string;
-  name: string;
-  setCode: string;
-  category: string;
-  releaseDate?: string;
-  language?: string;
-  contents?: Array<{
-    name: string;
-    count: number;
-    rarity?: string;
-  }>;
+async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 /**
@@ -33,16 +29,6 @@ function deriveType(category?: string): string {
   return "other";
 }
 
-async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } finally {
-    clearTimeout(id);
-  }
-}
-
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -50,245 +36,205 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    // Get the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create auth client to validate user
+    const authClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      }
     );
 
-    console.log('Starting MTGJSON import...');
+    // Get the current user
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authorization' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create supabase client with service role key for database operations
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    );
+
+    // Fetch all products from MTGJSON SetList API
+    const response = await fetchWithTimeout('https://mtgjson.com/api/v5/SetList.json', {}, 30000);
     
-    // First, fetch the SetList to get all available sets
-    const SET_LIST_URL = "https://mtgjson.com/api/v5/SetList.json";
-    
-    console.log('Fetching SetList from MTGJSON...');
-    const setListResponse = await fetchWithTimeout(SET_LIST_URL, {}, 20000);
-    if (!setListResponse.ok) {
-      throw new Error(`Failed to fetch SetList: ${setListResponse.status} ${setListResponse.statusText}`);
+    if (!response.ok) {
+      throw new Error(`MTGJSON API failed with status ${response.status}`);
     }
     
-    const setListData = await setListResponse.json();
-    const sets = setListData.data;
+    const data = await response.json();
     
-    console.log(`Found ${sets.length} sets. Fetching sealed products...`);
+    // Extract all sealed products from the API response
+    const allProducts: any[] = [];
     
-    let processedSets = 0;
+    if (data.data && Array.isArray(data.data)) {
+      data.data.forEach((set: any) => {
+        if (set.sealedProduct && Array.isArray(set.sealedProduct)) {
+          set.sealedProduct.forEach((product: any) => {
+            allProducts.push({
+              productId: product.uuid,
+              name: product.name,
+              setCode: set.code,
+              setName: set.name,
+              category: product.category || 'sealed_product',
+              releaseDate: product.releaseDate || set.releaseDate,
+              language: set.languages?.[0] || 'English',
+              contents: product.contents || [],
+              uuid: product.uuid,
+              subtype: product.subtype,
+              identifiers: product.identifiers,
+              purchaseUrls: product.purchaseUrls
+            });
+          });
+        }
+      });
+    }
+    
+    if (allProducts.length === 0) {
+      throw new Error('No sealed products found in MTGJSON API response');
+    }
+
     let added = 0;
     let updated = 0;
     let errors = 0;
-    let total = 0;
-    
-    // Process sets in batches to avoid timeouts
-    const BATCH_SIZE = 8; // Small batches for stability within time limits
-    const MAX_RUNTIME_MS = 55000; // Keep under 60s function limit
-    const startTime = Date.now();
-    
-    // Check if we have a resume point from query params
-    const url = new URL(req.url);
-    const resumeFrom = parseInt(url.searchParams.get('resume') || '0');
-    
-    console.log(`Starting import${resumeFrom > 0 ? ` from set ${resumeFrom}` : ''} with batch size ${BATCH_SIZE}`);
-    
-    for (let i = resumeFrom; i < sets.length; i += BATCH_SIZE) {
-      // Check if we're approaching timeout
-      if (Date.now() - startTime > MAX_RUNTIME_MS) {
-        console.log(`Timeout protection: stopping after ${processedSets} sets to avoid shutdown`);
-        console.log(`To resume, call with ?resume=${i} parameter`);
-        
-        return new Response(
-          JSON.stringify({
-            status: 'partial_success',
-            added,
-            updated,
-            errors,
-            total,
-            processedSets,
-            remainingSets: sets.length - i,
-            resumeFrom: i,
-            message: `Processed ${processedSets} sets. To continue, call the function with ?resume=${i}`
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-          }
-        );
-      }
-      
-      const batch = sets.slice(i, i + BATCH_SIZE);
-      
-      const batchPromises = batch.map(async (set: any) => {
-        try {
-          const setUrl = `https://mtgjson.com/api/v5/${set.code}.json`;
-          const setResponse = await fetchWithTimeout(setUrl, {}, 10000);
-          
-          if (!setResponse.ok) {
-            console.warn(`Failed to fetch set ${set.code}: ${setResponse.status} ${setResponse.statusText}`);
-            return [];
-          }
-          
-          const setData = await setResponse.json();
-          const setProducts = setData.data?.sealedProduct || [];
-          
-          // Add set metadata to each product
-          return setProducts.map((product: any) => ({
-            ...product,
-            productId: product.uuid || `${set.code}-${product.name}`,
-            setCode: set.code,
-            setName: set.name
-          }));
-        } catch (error) {
-          console.warn(`Error fetching set ${set.code}:`, error);
-          return [];
-        }
-      });
-      
-      const batchResults = await Promise.all(batchPromises);
-      const productsToProcess: any[] = batchResults.flat();
 
-      // Process products in smaller chunks within each batch for better performance
-      const PRODUCT_CHUNK_SIZE = 10;
-      for (let j = 0; j < productsToProcess.length; j += PRODUCT_CHUNK_SIZE) {
-        const chunk = productsToProcess.slice(j, j + PRODUCT_CHUNK_SIZE);
-        
-        await Promise.all(chunk.map(async (product) => {
+    // Process products in much smaller batches to avoid CPU limits
+    const BATCH_SIZE = 10; // Reduced from 50 to 10
+    const MAX_PRODUCTS = 100; // Limit total products per function call
+    
+    // Only process first 100 products to avoid CPU timeout
+    const productsToProcess = allProducts.slice(0, MAX_PRODUCTS);
+    
+    for (let i = 0; i < productsToProcess.length; i += BATCH_SIZE) {
+      const batch = productsToProcess.slice(i, i + BATCH_SIZE);
+      
+      // Process batch sequentially to avoid overwhelming the database
+      for (const product of batch) {
         try {
+          // Validate required fields
+          if (!product.productId || !product.name || !product.setCode) {
+            errors++;
+            continue;
+          }
+
+          // Ensure all required fields are present and valid
           const flatProduct = {
+            id: product.productId, // Use productId as primary key
             mtgjson_uuid: product.productId,
-            name: product.name,
-            set_code: product.setCode,
-            type: deriveType(product.category),
+            name: (product.name || 'Unknown Product').substring(0, 255),
+            set_code: (product.setCode || 'UNK').substring(0, 10),
+            type: deriveType(product.category) || 'other',
             release_date: product.releaseDate || null,
             language: product.language || 'English',
-            raw_json: product,
+            raw_json: product || {},
             active: true,
+            user_id: user.id,
+            // Ensure all NOT NULL fields have values
+            tcgplayer_product_id: null,
+            tcg_is_verified: false,
+            upc: null,
+            upc_is_verified: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           };
 
           // Check if product already exists
-          const { data: existing, error: selectError } = await supabaseClient
+          const { data: existing } = await supabaseClient
             .from('products')
             .select('id')
-            .eq('mtgjson_uuid', flatProduct.mtgjson_uuid)
-            .maybeSingle();
+            .eq('id', product.productId)
+            .eq('user_id', user.id)
+            .single();
 
-          let productId: string;
-
-          if (!existing) {
-            // Insert new product
-            const { data: insertData, error: insertError } = await supabaseClient
-              .from('products')
-              .insert(flatProduct)
-              .select('id')
-              .single();
-
-            if (insertError) {
-              console.error('Error inserting product:', insertError);
-              errors++;
-              return;
-            }
-
-            productId = insertData.id;
-            added++;
-          } else {
+          if (existing) {
             // Update existing product
             const { error: updateError } = await supabaseClient
               .from('products')
-              .update(flatProduct)
-              .eq('id', existing.id);
+              .update({
+                name: flatProduct.name,
+                set_code: flatProduct.set_code,
+                type: flatProduct.type,
+                release_date: flatProduct.release_date,
+                language: flatProduct.language,
+                raw_json: flatProduct.raw_json,
+                updated_at: flatProduct.updated_at
+              })
+              .eq('id', product.productId)
+              .eq('user_id', user.id);
 
             if (updateError) {
               console.error('Error updating product:', updateError);
               errors++;
-              return;
+            } else {
+              updated++;
             }
+          } else {
+            // Insert new product
+            const { error: insertError } = await supabaseClient
+              .from('products')
+              .insert(flatProduct);
 
-            productId = existing.id;
-            updated++;
-          }
-
-          // Clear existing contents
-          const { error: deleteError } = await supabaseClient
-            .from('product_contents')
-            .delete()
-            .eq('product_id', productId);
-
-          if (deleteError) {
-            console.error('Error deleting existing contents:', deleteError);
-          }
-
-          // Insert new contents
-          if (product.contents) {
-            const contents: any[] = [];
-            
-            // Handle different content structures in MTGJSON
-            if (product.contents.pack && Array.isArray(product.contents.pack)) {
-              // New format: contents.pack array
-              product.contents.pack.forEach((pack: any) => {
-                contents.push({
-                  product_id: productId,
-                  contained_name: pack.set ? `${pack.set} Pack` : (pack.code || 'Unknown Pack'),
-                  quantity: 1,
-                  rarity: null,
-                });
-              });
-            } else if (Array.isArray(product.contents)) {
-              // Legacy format: contents array
-              product.contents.forEach((content: any) => {
-                contents.push({
-                  product_id: productId,
-                  contained_name: content.name,
-                  quantity: content.count || 1,
-                  rarity: content.rarity || null,
-                });
-              });
-            }
-
-            if (contents.length > 0) {
-              const { error: contentsError } = await supabaseClient
-                .from('product_contents')
-                .insert(contents);
-
-              if (contentsError) {
-                console.error('Error inserting product contents:', contentsError);
-              }
+            if (insertError) {
+              console.error('Error inserting product:', insertError);
+              errors++;
+            } else {
+              added++;
             }
           }
-
-          total++;
         } catch (error) {
-          console.error(`Error processing product ${product.productId}:`, error);
+          console.error('Error processing product:', error);
           errors++;
         }
-        }));
       }
       
-      processedSets += batch.length;
-      console.log(`Processed ${processedSets}/${sets.length} sets; totals so far => added: ${added}, updated: ${updated}, errors: ${errors}`);
-      
-      // Add a small delay between batches
-      if (i + BATCH_SIZE < sets.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // Small delay between batches to reduce CPU pressure
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
-    // Finished batches
-    console.log(`Batch processing completed. Totals => added: ${added}, updated: ${updated}, errors: ${errors}`);
 
-    console.log(`Import completed: ${added} added, ${updated} updated, ${errors} errors (processed ${total} products)`);
+    const summary = {
+      status: 'success',
+      total: allProducts.length,
+      processed: productsToProcess.length,
+      added,
+      updated,
+      errors,
+      message: `Successfully processed ${productsToProcess.length} of ${allProducts.length} products from MTGJSON API. ${added} added, ${updated} updated, ${errors} errors. Run again to process more products.`
+    };
 
     return new Response(
-      JSON.stringify({
-        status: 'success',
-        added,
-        updated,
-        errors,
-        total,
-      }),
+      JSON.stringify(summary),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
+
   } catch (error) {
-    console.error('MTGJSON import error:', error);
+    console.error('Import error:', error);
     return new Response(
       JSON.stringify({
         status: 'error',
