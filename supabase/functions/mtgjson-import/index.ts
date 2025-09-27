@@ -119,27 +119,45 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Total products found: ${allProducts.length}`);
+    console.log(`User ID: ${user.id}`);
     
     // Prepare all products for bulk operations
     const productsToInsert: any[] = [];
-    const productsToUpdate: any[] = [];
     let processed = 0;
     let errors = 0;
 
     // Get existing products for this user to check for duplicates
-    const { data: existingProducts } = await supabaseClient
+    const { data: existingProducts, error: fetchError } = await supabaseClient
       .from('products')
       .select('mtgjson_uuid')
       .eq('user_id', user.id);
 
+    if (fetchError) {
+      console.error('Error fetching existing products:', fetchError);
+      throw new Error(`Failed to fetch existing products: ${fetchError.message}`);
+    }
+
     const existingUUIDs = new Set(existingProducts?.map(p => p.mtgjson_uuid) || []);
+    console.log(`Found ${existingUUIDs.size} existing products for user`);
     
     // Process all products and prepare for bulk operations
     for (const product of allProducts) {
       try {
         // Validate required fields
         if (!product.productId || !product.name || !product.setCode) {
+          console.error('Missing required fields for product:', { 
+            productId: product.productId, 
+            name: product.name, 
+            setCode: product.setCode 
+          });
           errors++;
+          continue;
+        }
+
+        // Check if this product already exists for this user
+        if (existingUUIDs.has(product.productId)) {
+          // Skip duplicates
+          console.log(`Skipping duplicate product: ${product.name}`);
           continue;
         }
 
@@ -154,22 +172,22 @@ Deno.serve(async (req) => {
           language: product.language || 'English',
           raw_json: product || {},
           active: true,
-          user_id: user.id,
+          user_id: user.id, // Ensure user_id is set
           tcgplayer_product_id: null,
           tcg_is_verified: false,
           upc: null,
           upc_is_verified: false
         };
 
-        // Check if this product already exists for this user
-        if (existingUUIDs.has(product.productId)) {
-          // Skip duplicates
+        // Validate that user_id is not null
+        if (!flatProduct.user_id) {
+          console.error('user_id is null for product:', flatProduct);
+          errors++;
           continue;
-        } else {
-          // Add to insert batch
-          productsToInsert.push(flatProduct);
         }
-        
+
+        // Add to insert batch
+        productsToInsert.push(flatProduct);
         processed++;
       } catch (error) {
         console.error('Error processing product:', error);
@@ -182,11 +200,20 @@ Deno.serve(async (req) => {
 
     // Bulk insert new products in batches
     if (productsToInsert.length > 0) {
-      console.log(`Inserting ${productsToInsert.length} new products...`);
+      console.log(`Preparing to insert ${productsToInsert.length} new products...`);
       
-      const BATCH_SIZE = 100; // Process in batches of 100
+      const BATCH_SIZE = 50; // Smaller batches for better error handling
       for (let i = 0; i < productsToInsert.length; i += BATCH_SIZE) {
         const batch = productsToInsert.slice(i, i + BATCH_SIZE);
+        
+        console.log(`Inserting batch ${Math.floor(i / BATCH_SIZE) + 1} with ${batch.length} products...`);
+        
+        // Validate each product in batch before inserting
+        for (const prod of batch) {
+          if (!prod.user_id || !prod.mtgjson_uuid || !prod.name) {
+            console.error('Invalid product in batch:', prod);
+          }
+        }
         
         const { error: insertError, data } = await supabaseClient
           .from('products')
@@ -195,14 +222,19 @@ Deno.serve(async (req) => {
 
         if (insertError) {
           console.error('Batch insert error:', insertError);
+          console.error('Failed batch details:', JSON.stringify(batch.slice(0, 2), null, 2)); // Log first 2 items for debugging
           errors += batch.length;
         } else {
           added += batch.length;
           console.log(`Successfully inserted batch ${Math.floor(i / BATCH_SIZE) + 1}, total added: ${added}`);
         }
       }
+    } else {
+      console.log('No new products to insert - all products already exist or had errors');
     }
 
+    console.log(`Final summary: processed=${processed}, added=${added}, updated=${updated}, errors=${errors}`);
+    
     const summary = {
       status: 'success',
       total: allProducts.length,
@@ -210,7 +242,7 @@ Deno.serve(async (req) => {
       added,
       updated,
       errors,
-      message: `Successfully processed all ${processed} products from MTGJSON API. ${added} added, ${updated} updated, ${errors} errors. No duplicates were inserted.`
+      message: `Successfully processed ${processed} products from MTGJSON API. ${added} added, ${updated} updated, ${errors} errors. ${existingUUIDs.size} products already existed.`
     };
 
     return new Response(
