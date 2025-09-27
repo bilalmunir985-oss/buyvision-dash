@@ -34,6 +34,42 @@ export default function ImportStatus() {
       // Show detailed success message with response data
       const result = response.data;
       const message = result?.message || `${jobName} completed successfully.`;
+
+      // If this was the fetch-prices job, persist data for Dashboard
+      if (endpoint === 'fetch-prices' && Array.isArray(result?.priceData)) {
+        try {
+          const pricesData = result.priceData;
+          const transformedData = pricesData.map((priceItem: any) => ({
+            id: priceItem.productId || `tcg-${priceItem.tcgplayerId}`,
+            name: priceItem.productName || 'Unknown Product',
+            set_code: priceItem.setCode || 'N/A',
+            type: priceItem.type || 'unknown',
+            lowest_total_price: priceItem.lowestTotalPrice,
+            lowest_item_price: priceItem.lowestItemPrice,
+            market_price: priceItem.marketPrice,
+            median_price: priceItem.medianPrice,
+            target_product_cost: priceItem.targetProductCost,
+            max_product_cost: priceItem.maxProductCost,
+            profit_margin: priceItem.profitMargin,
+            num_listings: priceItem.numListings,
+            total_quantity_listed: priceItem.totalQuantityListed,
+            product_url: priceItem.productUrl,
+            tcgplayer_id: priceItem.tcgplayerId,
+            savings_vs_max: priceItem.savingsVsMax,
+            within_target: priceItem.withinTarget,
+          }));
+
+          localStorage.setItem('fetchPricesData', JSON.stringify(pricesData));
+          localStorage.setItem('fetchPricesRowData', JSON.stringify(transformedData));
+
+          toast({
+            title: "Prices Fetched",
+            description: "Pricing data cached. Open Dashboard to view.",
+          });
+        } catch (e) {
+          console.error('Failed to cache price data:', e);
+        }
+      }
       
       toast({
         title: "Import Successful",
