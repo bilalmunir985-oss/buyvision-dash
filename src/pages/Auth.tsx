@@ -7,17 +7,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, Mail, CheckCircle } from 'lucide-react';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showOtpDialog, setShowOtpDialog] = useState(false);
+  const [signupEmail, setSignupEmail] = useState('');
   const [activeTab, setActiveTab] = useState('signin');
   const [searchParams] = useSearchParams();
-  const { user, signIn, signUp } = useAuth();
+  const { user, signIn, signUp, verifyOtp } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -65,11 +68,38 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
+      setSignupEmail(email);
+      setShowOtpDialog(true);
       toast({
         title: "Check Your Email",
-        description: `We've sent a confirmation link to ${email}. Please check your inbox and click the link to verify your account.`,
+        description: `We've sent a 6-digit code to ${email}. Please enter it below.`,
       });
-      setShowEmailDialog(true);
+    }
+    
+    setLoading(false);
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) return;
+    
+    setLoading(true);
+    
+    const { error } = await verifyOtp(signupEmail, otp);
+    
+    if (error) {
+      toast({
+        title: "Error verifying code",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Account Verified!",
+        description: "Your account has been verified successfully.",
+      });
+      setShowOtpDialog(false);
+      setOtp('');
     }
     
     setLoading(false);
@@ -152,35 +182,59 @@ export default function Auth() {
         </CardContent>
       </Card>
 
-      {/* Email Confirmation Dialog */}
-      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+      {/* OTP Verification Dialog */}
+      <Dialog open={showOtpDialog} onOpenChange={setShowOtpDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle className="h-6 w-6 text-green-600" />
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+              <Mail className="h-6 w-6 text-blue-600" />
             </div>
-            <DialogTitle className="text-xl font-semibold">Check Your Email</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">Enter Verification Code</DialogTitle>
             <DialogDescription className="text-center">
-              We've sent a confirmation link to <strong>{email}</strong>
+              We've sent a 6-digit code to <strong>{signupEmail}</strong>
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <div className="flex justify-center">
+              <InputOTP value={otp} onChange={setOtp} maxLength={6}>
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
             <div className="rounded-lg bg-muted p-4">
               <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4" />
-                <span>Check your email and click the confirmation link to complete your registration.</span>
+                <span>Enter the 6-digit code from your email to verify your account.</span>
               </div>
             </div>
-            <Button 
-              onClick={() => {
-                setShowEmailDialog(false);
-                setActiveTab('signin');
-              }} 
-              className="w-full"
-            >
-              Go to Sign In
-            </Button>
-          </div>
+            <div className="flex space-x-2">
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowOtpDialog(false);
+                  setOtp('');
+                }} 
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="flex-1"
+              >
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Verify
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
