@@ -64,8 +64,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signUp = async (email: string, password: string) => {
-    // Use your production domain for email confirmations
-    const redirectUrl = `https://buylist.proxyprintr.com/auth?confirmed=true`;
+    // Redirect to the site root so SPA fallback always works
+    const redirectUrl = `${window.location.origin}/`;
     
     const { error } = await supabase.auth.signUp({
       email,
