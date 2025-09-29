@@ -8,7 +8,6 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
-  verifyOtp: (email: string, token: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -72,14 +71,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error };
   };
 
-  const verifyOtp = async (email: string, token: string) => {
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'signup',
-    });
-    return { error };
-  };
 
   const signOut = async () => {
     // Clear localStorage data when user signs out
@@ -104,7 +95,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     signIn,
     signUp,
-    verifyOtp,
     signOut,
     login,
     logout,
