@@ -353,8 +353,11 @@ export default function Dashboard() {
       }
       
       setLoading(false);
-      // Always refresh latest prices on page load
-      await fetchPrices({ silent: true });
+      // Only fetch prices if no stored data exists
+      const hasStoredData = !!localStorage.getItem('fetchPricesData') && !!localStorage.getItem('fetchPricesRowData');
+      if (!hasStoredData) {
+        await fetchPrices({ silent: true });
+      }
     };
     
     loadInitialData();

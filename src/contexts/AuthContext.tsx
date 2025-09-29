@@ -37,8 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         setLoading(false);
         
-        // Clear localStorage when user changes (login/logout)
-        if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') {
+        // Clear localStorage only on sign out to preserve pricing cache on login
+        if (event === 'SIGNED_OUT') {
           localStorage.removeItem('fetchPricesData');
           localStorage.removeItem('fetchPricesRowData');
         }
