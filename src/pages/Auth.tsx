@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Loader2, Mail } from 'lucide-react';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
@@ -15,6 +16,7 @@ export default function Auth() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('signin');
+  const [showEmailSentModal, setShowEmailSentModal] = useState(false);
   const [searchParams] = useSearchParams();
   const { user, signIn, signUp } = useAuth();
   const { toast } = useToast();
@@ -74,11 +76,7 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
-      toast({
-        title: "Account Created!",
-        description: "You can now sign in with your credentials.",
-      });
-      setActiveTab('signin');
+      setShowEmailSentModal(true);
       setEmail('');
       setPassword('');
       setConfirmPassword('');
@@ -175,6 +173,32 @@ export default function Auth() {
         </CardContent>
       </Card>
 
+      <Dialog open={showEmailSentModal} onOpenChange={setShowEmailSentModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                <Mail className="w-8 h-8 text-primary" />
+              </div>
+            </div>
+            <DialogTitle className="text-xl">Check Your Email</DialogTitle>
+            <DialogDescription className="text-center">
+              We've sent a confirmation link to your email address. Please check your inbox and click the link to verify your account.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center mt-6">
+            <Button 
+              onClick={() => {
+                setShowEmailSentModal(false);
+                setActiveTab('signin');
+              }}
+              className="w-full"
+            >
+              Got it, thanks!
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
