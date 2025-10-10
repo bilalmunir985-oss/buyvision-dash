@@ -77,7 +77,7 @@ export default function UPCMapping() {
   const handleAcceptCandidate = async (candidateId: string) => {
     setVerifyingCandidate(candidateId);
     try {
-      const { data, error } = await supabase.functions.invoke('wpn-upc', {
+      const { data, error } = await supabase.functions.invoke('wpn-upc?action=approve', {
         body: { candidateId }
       });
 
@@ -110,7 +110,7 @@ export default function UPCMapping() {
   const handleRejectCandidate = async (candidateId: string) => {
     setVerifyingCandidate(candidateId);
     try {
-      const { data, error } = await supabase.functions.invoke('wpn-upc', {
+      const { data, error } = await supabase.functions.invoke('wpn-upc?action=reject', {
         body: { candidateId }
       });
 

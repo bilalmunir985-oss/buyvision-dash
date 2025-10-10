@@ -97,7 +97,7 @@ async function findBestProductMatch(supabase: any, userId: string, scrapedProduc
     for (const product of allProducts) {
       const similarity = calculateWordSimilarity(scrapedProduct.name, product.name);
       
-      if (similarity > bestMatch.similarity_score && similarity >= 0.3) { // 30% threshold
+      if (similarity > bestMatch.similarity_score && similarity >= 0.15) { // 15% threshold for flexible matching
         bestMatch = {
           scraped_product: scrapedProduct,
           matched_product_id: product.id,
@@ -214,41 +214,61 @@ async function processUPCMapping(supabase: any, userId: string): Promise<{
     console.log('Fetching products from external scraper API...');
     
     let scraperData: ScraperResponse;
+    let retryCount = 0;
+    const maxRetries = 3;
     
-    try {
-      // Try to call external scraper API
-      const response = await fetch(SCRAPER_API_URL, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'MTG-BuyList-UPC-Mapper/1.0'
+    // Auto-retry logic for scraper API
+    while (retryCount <= maxRetries) {
+      try {
+        console.log(`Attempt ${retryCount + 1} of ${maxRetries + 1} to call scraper API...`);
+        
+        const response = await fetch(SCRAPER_API_URL, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'MTG-BuyList-UPC-Mapper/1.0'
+          },
+          signal: AbortSignal.timeout(30000) // 30 second timeout
+        });
+
+        if (!response.ok) {
+          throw new Error(`Scraper API returned ${response.status}: ${response.statusText}`);
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(`Scraper API returned ${response.status}: ${response.statusText}`);
+        scraperData = await response.json();
+        
+        if (!scraperData.success) {
+          throw new Error(`Scraper API error: ${scraperData.message}`);
+        }
+
+        console.log(`✓ Received ${scraperData.total_products} products from scraper API`);
+        break; // Success, exit retry loop
+        
+      } catch (apiError) {
+        retryCount++;
+        console.log(`Attempt ${retryCount} failed:`, apiError);
+        
+        if (retryCount > maxRetries) {
+          console.log('All retry attempts exhausted, using sample data');
+          
+          // Fallback to sample data after all retries fail
+          const sampleProducts = generateSampleUPCData();
+          scraperData = {
+            success: true,
+            total_products: sampleProducts.length,
+            products: sampleProducts,
+            message: 'Using sample UPC data (external scraper API not available after retries)'
+          };
+          
+          console.log(`Using ${scraperData.total_products} sample products`);
+          break;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+        console.log(`Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
-
-      scraperData = await response.json();
-      
-      if (!scraperData.success) {
-        throw new Error(`Scraper API error: ${scraperData.message}`);
-      }
-
-      console.log(`Received ${scraperData.total_products} products from scraper API`);
-    } catch (apiError) {
-      console.log('External scraper API not available, using sample data:', apiError);
-      
-      // Fallback to sample data
-      const sampleProducts = generateSampleUPCData();
-      scraperData = {
-        success: true,
-        total_products: sampleProducts.length,
-        products: sampleProducts,
-        message: 'Using sample UPC data (external scraper API not available)'
-      };
-      
-      console.log(`Using ${scraperData.total_products} sample products`);
     }
 
     const matches: ProductMatch[] = [];
