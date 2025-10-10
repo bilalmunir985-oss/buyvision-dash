@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // External scraper API endpoint
-const SCRAPER_API_URL = 'https://8498dec63c89.ngrok-free.app/scrape';
+const SCRAPER_API_URL = 'http://143.110.145.170:8080/scrape';
 
 interface ScrapedProduct {
   name: string;

@@ -30,6 +30,11 @@ export default function Auth() {
       });
       setActiveTab('signin');
     }
+    
+    // Hidden signup mode - only accessible via ?mode=signup URL parameter
+    if (searchParams.get('mode') === 'signup') {
+      setActiveTab('signup');
+    }
   }, [searchParams, toast]);
 
   if (user) {
@@ -97,10 +102,18 @@ export default function Auth() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
+            {searchParams.get('mode') === 'signup' ? (
+              // Show both tabs only when signup mode is enabled via URL parameter
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+            ) : (
+              // Only show Sign In tab by default
+              <TabsList className="grid w-full grid-cols-1">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+              </TabsList>
+            )}
             
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">

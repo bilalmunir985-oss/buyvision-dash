@@ -60,6 +60,20 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Authentication
+
+### Sign In
+Users can sign in at `/auth` or `/login`
+
+### Sign Up (Hidden)
+For security reasons, the sign-up page is hidden from the UI. To create a new account, access the auth page with the signup mode parameter:
+
+```
+/auth?mode=signup
+```
+
+This will display the sign-up form alongside the sign-in option.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/eb478ea5-5b48-4226-8b38-8da21d564428) and click on Share -> Publish.
