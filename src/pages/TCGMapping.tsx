@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Search, Check, ExternalLink, Play, DollarSign, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Loader2, Search, Check, ExternalLink, Play, DollarSign, ChevronLeft, ChevronRight, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
 interface Product {
   id: string;
@@ -24,6 +25,14 @@ interface TCGSearchResult {
   urlName?: string;
 }
 
+interface AutoMappedProduct {
+  productId: string;
+  productName: string;
+  tcgId: number;
+  tcgName: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 export default function TCGMapping() {
   const [allUnverifiedProducts, setAllUnverifiedProducts] = useState<Product[]>([]);
   const [unverifiedProducts, setUnverifiedProducts] = useState<Product[]>([]);
@@ -32,6 +41,8 @@ export default function TCGMapping() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [autoMapping, setAutoMapping] = useState(false);
+  const [autoMappedProducts, setAutoMappedProducts] = useState<AutoMappedProduct[]>([]);
+  const [verifyingAll, setVerifyingAll] = useState(false);
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const [verifiedMapping, setVerifiedMapping] = useState<{productName: string, tcgId: number} | null>(null);
   const [verifyingProduct, setVerifyingProduct] = useState<string | null>(null);
@@ -214,6 +225,7 @@ export default function TCGMapping() {
 
   const handleAutoMapping = async () => {
     setAutoMapping(true);
+    setAutoMappedProducts([]);
     try {
       const response = await supabase.functions.invoke('auto-tcg-mapping', {
         body: { limit: 20 }
@@ -222,13 +234,20 @@ export default function TCGMapping() {
       if (response.error) throw response.error;
 
       const result = response.data;
-      toast({
-        title: "Auto Mapping Complete",
-        description: `Mapped ${result.mapped} of ${result.processed} products`,
-      });
-
-      // Refresh the list
-      fetchUnverifiedProducts();
+      
+      if (result.mappedProducts && result.mappedProducts.length > 0) {
+        setAutoMappedProducts(result.mappedProducts);
+        toast({
+          title: "Auto Mapping Complete",
+          description: `Found ${result.mapped} matches. Review and verify to save.`,
+        });
+      } else {
+        toast({
+          title: "Auto Mapping Complete",
+          description: `No matches found`,
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -237,6 +256,48 @@ export default function TCGMapping() {
       });
     } finally {
       setAutoMapping(false);
+    }
+  };
+
+  const handleVerifyAllMapped = async () => {
+    setVerifyingAll(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const product of autoMappedProducts) {
+        try {
+          const { error } = await supabase.functions.invoke('admin-set-tcg-id', {
+            body: { 
+              productId: product.productId, 
+              tcgId: product.tcgId 
+            }
+          });
+
+          if (error) throw error;
+          successCount++;
+        } catch (error) {
+          console.error(`Error verifying ${product.productName}:`, error);
+          errorCount++;
+        }
+      }
+
+      toast({
+        title: "Verification complete",
+        description: `${successCount} products verified${errorCount > 0 ? `, ${errorCount} errors` : ''}`,
+      });
+
+      setAutoMappedProducts([]);
+      await fetchUnverifiedProducts();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Verification failed",
+        description: error instanceof Error ? error.message : "Failed to verify products",
+        variant: "destructive",
+      });
+    } finally {
+      setVerifyingAll(false);
     }
   };
 
@@ -331,6 +392,92 @@ export default function TCGMapping() {
           </Button>
         </div>
       </div>
+
+      {/* Auto-Mapped Products Verification Dialog */}
+      <Dialog open={autoMappedProducts.length > 0} onOpenChange={(open) => !open && setAutoMappedProducts([])}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Auto-Mapped Products ({autoMappedProducts.length})
+            </DialogTitle>
+            <DialogDescription>
+              Review the automatically mapped products below. Click "Verify All" to save these mappings to the database.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 my-4">
+            {autoMappedProducts.map((product) => (
+              <div key={product.productId} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-semibold text-sm truncate">{product.productName}</h4>
+                      <Badge 
+                        variant={
+                          product.confidence === 'high' ? 'default' : 
+                          product.confidence === 'medium' ? 'secondary' : 
+                          'outline'
+                        }
+                        className="flex-shrink-0"
+                      >
+                        {product.confidence === 'high' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                        {product.confidence === 'medium' && <AlertCircle className="h-3 w-3 mr-1" />}
+                        {product.confidence} match
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                        {product.tcgName}
+                      </span>
+                      <Badge variant="outline" className="text-xs font-mono">
+                        ID: {product.tcgId}
+                      </Badge>
+                    </div>
+                  </div>
+                  <a
+                    href={`https://www.tcgplayer.com/product/${product.tcgId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm flex-shrink-0"
+                  >
+                    View
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAutoMappedProducts([])}
+              disabled={verifyingAll}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleVerifyAllMapped}
+              disabled={verifyingAll}
+              className="flex items-center gap-2"
+            >
+              {verifyingAll ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Verify All {autoMappedProducts.length} Products
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
         <div className="flex flex-col space-y-4 overflow-y-auto">

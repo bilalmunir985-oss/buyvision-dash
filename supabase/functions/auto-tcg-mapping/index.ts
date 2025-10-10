@@ -111,6 +111,7 @@ Deno.serve(async (req) => {
     let processed = 0;
     let mapped = 0;
     let errors = 0;
+    const mappedProducts: { productId: string; productName: string; tcgId: number; tcgName: string; confidence: 'high' | 'medium' | 'low' }[] = [];
 
     for (const product of products) {
       try {
@@ -122,23 +123,28 @@ Deno.serve(async (req) => {
           // Take the first result as best match
           const bestMatch = searchResults[0];
           
-          console.log(`Found match: ${bestMatch.productName} (ID: ${bestMatch.productId})`);
+          // Determine confidence based on name similarity
+          const nameLower = product.name.toLowerCase();
+          const matchLower = bestMatch.productName.toLowerCase();
+          let confidence: 'high' | 'medium' | 'low' = 'low';
           
-          // Update product with TCG ID
-          const { error: updateError } = await supabaseClient
-            .from('products')
-            .update({
-              tcgplayer_product_id: bestMatch.productId,
-              tcg_is_verified: true
-            })
-            .eq('id', product.id);
-
-          if (updateError) {
-            console.error(`Error updating product ${product.name}:`, updateError);
-            errors++;
-          } else {
-            mapped++;
+          if (nameLower === matchLower) {
+            confidence = 'high';
+          } else if (nameLower.includes(matchLower) || matchLower.includes(nameLower)) {
+            confidence = 'medium';
           }
+          
+          console.log(`Found match: ${bestMatch.productName} (ID: ${bestMatch.productId}) - Confidence: ${confidence}`);
+          
+          mappedProducts.push({
+            productId: product.id,
+            productName: product.name,
+            tcgId: bestMatch.productId,
+            tcgName: bestMatch.productName,
+            confidence
+          });
+          
+          mapped++;
         } else {
           console.log(`No matches found for: ${product.name}`);
         }
@@ -162,7 +168,8 @@ Deno.serve(async (req) => {
       total: products.length,
       processed,
       mapped,
-      errors
+      errors,
+      mappedProducts
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

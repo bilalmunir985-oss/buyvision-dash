@@ -1,4 +1,1 @@
 project_id = "hbvbaanjrhekqrpiuezm"
-
-[functions.upc-auto-map]
-verify_jwt = true

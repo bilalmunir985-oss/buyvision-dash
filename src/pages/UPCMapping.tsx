@@ -4,8 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Check, X, RefreshCw, Sparkles, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Loader2, Check, X, RefreshCw } from 'lucide-react';
 
 interface UPCCandidate {
   id: string;
@@ -36,14 +35,6 @@ interface ProductMatch {
   match_reason: string;
 }
 
-interface AutoMappedProduct {
-  productId: string;
-  productName: string;
-  tcgId: number;
-  tcgName: string;
-  confidence: 'high' | 'medium' | 'low';
-}
-
 export default function UPCMapping() {
   const [upcCandidates, setUpcCandidates] = useState<UPCCandidate[]>([]);
   const [productMatches, setProductMatches] = useState<ProductMatch[]>([]);
@@ -51,9 +42,6 @@ export default function UPCMapping() {
   const [scraping, setScraping] = useState(false);
   const [acceptingCandidate, setAcceptingCandidate] = useState<string | null>(null);
   const [rejectingCandidate, setRejectingCandidate] = useState<string | null>(null);
-  const [autoMapping, setAutoMapping] = useState(false);
-  const [autoMappedProducts, setAutoMappedProducts] = useState<AutoMappedProduct[]>([]);
-  const [verifyingAll, setVerifyingAll] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -150,80 +138,6 @@ export default function UPCMapping() {
     }
   };
 
-  const handleAutoMap = async () => {
-    setAutoMapping(true);
-    setAutoMappedProducts([]);
-    try {
-      const { data, error } = await supabase.functions.invoke('upc-auto-map', {
-        body: {}
-      });
-
-      if (error) throw error;
-
-      if (!data.success) {
-        throw new Error(data.error || 'Auto-mapping failed');
-      }
-
-      setAutoMappedProducts(data.mappedProducts || []);
-      
-      toast({
-        title: "Auto-mapping complete",
-        description: `Found ${data.mapped} matches out of ${data.total} products`,
-      });
-    } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "Auto-mapping failed",
-        description: error instanceof Error ? error.message : "Failed to auto-map products",
-        variant: "destructive",
-      });
-    } finally {
-      setAutoMapping(false);
-    }
-  };
-
-  const handleVerifyAllMapped = async () => {
-    setVerifyingAll(true);
-    try {
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (const product of autoMappedProducts) {
-        try {
-          const { error } = await supabase.functions.invoke('admin-set-tcg-id', {
-            body: { 
-              productId: product.productId, 
-              tcgId: product.tcgId 
-            }
-          });
-
-          if (error) throw error;
-          successCount++;
-        } catch (error) {
-          console.error(`Error verifying ${product.productName}:`, error);
-          errorCount++;
-        }
-      }
-
-      toast({
-        title: "Verification complete",
-        description: `${successCount} products verified, ${errorCount} errors`,
-      });
-
-      setAutoMappedProducts([]);
-      await fetchUPCCandidates();
-    } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "Verification failed",
-        description: error instanceof Error ? error.message : "Failed to verify products",
-        variant: "destructive",
-      });
-    } finally {
-      setVerifyingAll(false);
-    }
-  };
-
   const handleStartScraping = async () => {
     setScraping(true);
     try {
@@ -299,126 +213,19 @@ export default function UPCMapping() {
           <h1 className="text-3xl font-bold">UPC Mapping</h1>
           <p className="text-muted-foreground">Review UPC codes from WPN pages</p>
         </div>
-        <div className="flex gap-3">
-          <Button 
-            onClick={handleAutoMap} 
-            disabled={autoMapping}
-            variant="default"
-            className="flex items-center gap-2"
-          >
-            {autoMapping ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Auto Mapping...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Auto Map 20 Products
-              </>
-            )}
-          </Button>
-          <Button 
-            onClick={handleStartScraping} 
-            disabled={scraping}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            {scraping ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {scraping ? 'Scraping...' : 'Start WPN Scraping'}
-          </Button>
-        </div>
+        <Button 
+          onClick={handleStartScraping} 
+          disabled={scraping}
+          className="flex items-center gap-2"
+        >
+          {scraping ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {scraping ? 'Scraping...' : 'Start WPN Scraping'}
+        </Button>
       </div>
-
-      {/* Auto-Mapped Products Verification Dialog */}
-      <Dialog open={autoMappedProducts.length > 0} onOpenChange={(open) => !open && setAutoMappedProducts([])}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              Auto-Mapped Products ({autoMappedProducts.length})
-            </DialogTitle>
-            <DialogDescription>
-              Review the automatically mapped products below. Click "Verify All" to save these mappings to the database.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-3 my-4">
-            {autoMappedProducts.map((product) => (
-              <div key={product.productId} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h4 className="font-semibold text-sm truncate">{product.productName}</h4>
-                      <Badge 
-                        variant={
-                          product.confidence === 'high' ? 'default' : 
-                          product.confidence === 'medium' ? 'secondary' : 
-                          'outline'
-                        }
-                        className="flex-shrink-0"
-                      >
-                        {product.confidence === 'high' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                        {product.confidence === 'medium' && <AlertCircle className="h-3 w-3 mr-1" />}
-                        {product.confidence} match
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-muted-foreground">→</span>
-                      <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                        {product.tcgName}
-                      </span>
-                      <Badge variant="outline" className="text-xs font-mono">
-                        ID: {product.tcgId}
-                      </Badge>
-                    </div>
-                  </div>
-                  <a
-                    href={`https://www.tcgplayer.com/product/${product.tcgId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm flex-shrink-0"
-                  >
-                    View
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setAutoMappedProducts([])}
-              disabled={verifyingAll}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleVerifyAllMapped}
-              disabled={verifyingAll}
-              className="flex items-center gap-2"
-            >
-              {verifyingAll ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Verify All {autoMappedProducts.length} Products
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Product Matches Table */}
       {productMatches.length > 0 && (
